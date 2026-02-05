@@ -4,11 +4,14 @@
 
 #pragma once
 
+#include <frc/smartdashboard/SendableChooser.h>
+#include <frc/smartdashboard/SmartDashboard.h>
 #include <frc/TimedRobot.h>
 
 class Robot : public frc::TimedRobot {
  public:
   Robot();
+  void RobotInit() override;
   void RobotPeriodic() override;
 
   void AutonomousInit() override;
@@ -25,4 +28,16 @@ class Robot : public frc::TimedRobot {
 
   void SimulationInit() override;
   void SimulationPeriodic() override;
+
+ private:
+  enum class AutoState {
+    START,
+    SWEEP,
+    RETRIEVE_BOX,
+    DUMP_MATERIALS,
+    TEST_MODE
+  };
+
+  AutoState m_autoState = AutoState::START;
+  frc::SendableChooser<bool> m_enableTestModeChooser;
 };
