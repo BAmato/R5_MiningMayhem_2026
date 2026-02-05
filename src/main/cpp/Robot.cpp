@@ -11,6 +11,7 @@ void Robot::RobotPeriodic() {}
 
 void Robot::AutonomousInit() {}
 void Robot::AutonomousPeriodic() {}
+// Placeholder: add autonomous periodic logic here.
 
 void Robot::TeleopInit() {}
 void Robot::TeleopPeriodic() {}
