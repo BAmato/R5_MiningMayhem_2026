@@ -24,6 +24,9 @@ void Robot::SimulationPeriodic() {}
 
 #ifndef RUNNING_FRC_TESTS
 int main() {
+  constexpr bool kMainEntryTest = true;
+  static_assert(kMainEntryTest, "Main entry test failed.");
+  (void)kMainEntryTest;
   return frc::StartRobot<Robot>();
 }
 #endif
