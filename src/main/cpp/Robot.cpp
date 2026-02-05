@@ -15,8 +15,7 @@ void Robot::RobotInit() {
 void Robot::RobotPeriodic() {}
 
 void Robot::AutonomousInit() {}
-void Robot::AutonomousPeriodic() {}
-// Placeholder: add autonomous periodic logic here.
+
 void Robot::AutonomousPeriodic() {
   if (m_enableTestModeChooser.GetSelected()) {
     m_autoState = AutoState::TEST_MODE;
