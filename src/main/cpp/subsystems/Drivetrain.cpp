@@ -64,3 +64,21 @@ void Drivetrain::SimulationPeriodic() {
 
 // Put methods for controlling this subsystem
 // here. Call these from Commands.
+
+void Drivetrain::ResetDriveEncoders() {
+    m_quadratureEncoder1.Reset();
+    m_quadratureEncoder2.Reset();
+}
+
+double Drivetrain::GetAverageDistanceMeters() const {
+    return (m_quadratureEncoder1.GetDistance() + m_quadratureEncoder2.GetDistance()) / 2.0;
+}
+
+void Drivetrain::DriveArcade(double xSpeed, double zRotation) {
+    m_differentialDrive1.ArcadeDrive(xSpeed, zRotation);
+}
+
+void Drivetrain::StopDrive() {
+    m_differentialDrive1.StopMotor();
+}
+
