@@ -4,7 +4,11 @@
 #include <cstdint>
 #include <cstring>
 
-#include <frc/SerialPort.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <frc/Timer.h>
 #include <frc/smartdashboard/SmartDashboard.h>
 #include <frc2/command/SubsystemBase.h>
@@ -58,6 +62,7 @@ class SerialBridgeSubsystem : public frc2::SubsystemBase {
  public:
   explicit SerialBridgeSubsystem(
       frc::SerialPort::Port port = frc::SerialPort::Port::kUSB1);
+  ~SerialBridgeSubsystem();
 
   void Periodic() override;
 
@@ -83,7 +88,14 @@ class SerialBridgeSubsystem : public frc2::SubsystemBase {
  private:
   static uint8_t ComputeCRC8(const uint8_t* data, size_t length);
 
-  frc::SerialPort m_serial;
+  static constexpr const char* JETSON_IP = "10.0.67.5";
+  static constexpr int TX_PORT = 5800;
+  static constexpr int RX_PORT = 5801;
+
+  int m_txSock{-1};
+  int m_rxSock{-1};
+  struct sockaddr_in m_jetsonAddr{};
+  bool m_socketsReady{false};
   RioToJetsonPacket m_txPacket{};
   JetsonToRioPacket m_rxPacket{};
   uint8_t m_txSeq{0};
@@ -94,7 +106,4 @@ class SerialBridgeSubsystem : public frc2::SubsystemBase {
   static constexpr double kJetsonTimeoutSec = 0.200;
   uint32_t m_rxCount{0};
   uint32_t m_droppedCount{0};
-  static constexpr size_t kRxBufSize = 256;
-  uint8_t m_rxBuf[kRxBufSize]{};
-  size_t m_rxBufLen{0};
 };

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <frc/DriverStation.h>
 #include <units/time.h>
 
 namespace {
@@ -10,26 +11,64 @@ static constexpr uint8_t kMagicJetsonToRio[2] = {0x5A, 0xA5};
 constexpr uint8_t kStartSignalForwardedMask = 0x01;
 }  // namespace
 
-SerialBridgeSubsystem::SerialBridgeSubsystem(frc::SerialPort::Port port)
-    : m_serial(115200,
-               port,
-               8,
-               frc::SerialPort::Parity::kParity_None,
-               frc::SerialPort::StopBits::kStopBits_One) {
+SerialBridgeSubsystem::SerialBridgeSubsystem(frc::SerialPort::Port port) {
+  (void)port;
   SetName("SerialBridgeSubsystem");
   SetSubsystem("SerialBridgeSubsystem");
 
-  m_serial.SetFlowControl(frc::SerialPort::FlowControl::kFlowControl_None);
-  m_serial.SetWriteBufferMode(frc::SerialPort::WriteBufferMode::kFlushOnAccess);
-  m_serial.SetReadBufferSize(static_cast<int>(kRxBufSize));
-  m_serial.DisableTermination();
-  m_serial.SetTimeout(units::second_t{0.005});
+  // TX socket
+  m_txSock = socket(AF_INET, SOCK_DGRAM, 0);
+  if (m_txSock < 0) {
+    frc::DriverStation::ReportWarning("SerialBridge: failed to create TX socket");
+    return;
+  }
 
+  // RX socket
+  m_rxSock = socket(AF_INET, SOCK_DGRAM, 0);
+  if (m_rxSock < 0) {
+    frc::DriverStation::ReportWarning("SerialBridge: failed to create RX socket");
+    close(m_txSock);
+    m_txSock = -1;
+    return;
+  }
+
+  // SO_REUSEADDR on RX
+  int opt = 1;
+  setsockopt(m_rxSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+  // Non-blocking RX
+  fcntl(m_rxSock, F_SETFL, O_NONBLOCK);
+
+  // Bind RX to all interfaces on port 5801
+  struct sockaddr_in rxAddr{};
+  rxAddr.sin_family = AF_INET;
+  rxAddr.sin_addr.s_addr = INADDR_ANY;
+  rxAddr.sin_port = htons(RX_PORT);
+  if (bind(m_rxSock, reinterpret_cast<struct sockaddr*>(&rxAddr), sizeof(rxAddr)) < 0) {
+    frc::DriverStation::ReportWarning("SerialBridge: failed to bind RX socket");
+    close(m_txSock);
+    m_txSock = -1;
+    close(m_rxSock);
+    m_rxSock = -1;
+    return;
+  }
+
+  // Configure Jetson destination address
+  m_jetsonAddr.sin_family = AF_INET;
+  m_jetsonAddr.sin_port = htons(TX_PORT);
+  inet_pton(AF_INET, JETSON_IP, &m_jetsonAddr.sin_addr);
+
+  m_socketsReady = true;
   std::memset(&m_txPacket, 0, sizeof(m_txPacket));
   std::memset(&m_rxPacket, 0, sizeof(m_rxPacket));
   // Start timer immediately so it expires before the first packet arrives,
   // keeping m_jetsonConnected = false until a real packet is received.
   m_lastRxTimer.Start();
+}
+
+SerialBridgeSubsystem::~SerialBridgeSubsystem() {
+  if (m_txSock >= 0) close(m_txSock);
+  if (m_rxSock >= 0) close(m_rxSock);
 }
 
 uint8_t SerialBridgeSubsystem::ComputeCRC8(const uint8_t* data, size_t length) {
@@ -50,88 +89,48 @@ uint8_t SerialBridgeSubsystem::ComputeCRC8(const uint8_t* data, size_t length) {
 }
 
 void SerialBridgeSubsystem::Periodic() {
-  std::memcpy(m_txPacket.magic, kMagicRioToJetson, sizeof(kMagicRioToJetson));
+  if (!m_socketsReady) {
+    m_jetsonConnected = false;
+    return;
+  }
+
+  // TX
+  m_txPacket.magic[0] = kMagicRioToJetson[0];
+  m_txPacket.magic[1] = kMagicRioToJetson[1];
   m_txPacket.seq = m_txSeq++;
   m_txPacket.timestamp_ms = static_cast<uint32_t>(
       frc::Timer::GetFPGATimestamp().value() * 1000.0);
-  m_txPacket.crc8 =
-      ComputeCRC8(reinterpret_cast<const uint8_t*>(&m_txPacket), sizeof(m_txPacket) - 1);
+  m_txPacket.crc8 = ComputeCRC8(
+      reinterpret_cast<const uint8_t*>(&m_txPacket),
+      sizeof(RioToJetsonPacket) - 1);
+  sendto(m_txSock,
+         reinterpret_cast<const char*>(&m_txPacket),
+         sizeof(RioToJetsonPacket),
+         0,
+         reinterpret_cast<const struct sockaddr*>(&m_jetsonAddr),
+         sizeof(m_jetsonAddr));
+  // sendto failure silently ignored — Jetson unreachable is not fatal
 
-  m_serial.Write(reinterpret_cast<const char*>(&m_txPacket),
-                 static_cast<int>(sizeof(m_txPacket)));
+  uint8_t rxBuf[sizeof(JetsonToRioPacket)];
+  ssize_t received = recvfrom(m_rxSock, rxBuf, sizeof(rxBuf), 0, nullptr, nullptr);
+  bool packetFound = false;
 
-  const int bytesAvailable = m_serial.GetBytesReceived();
-  if (bytesAvailable > 0) {
-    const size_t roomRemaining = kRxBufSize - m_rxBufLen;
-    const int bytesToRead = static_cast<int>(std::min<size_t>(
-        static_cast<size_t>(bytesAvailable), roomRemaining));
-
-    if (bytesToRead > 0) {
-      const int bytesRead = m_serial.Read(
-          reinterpret_cast<char*>(m_rxBuf + m_rxBufLen), bytesToRead);
-      if (bytesRead > 0) {
-        m_rxBufLen += static_cast<size_t>(bytesRead);
+  if (received == static_cast<ssize_t>(sizeof(JetsonToRioPacket))) {
+    if (rxBuf[0] == kMagicJetsonToRio[0] && rxBuf[1] == kMagicJetsonToRio[1]) {
+      uint8_t expectedCrc = ComputeCRC8(rxBuf, sizeof(JetsonToRioPacket) - 1);
+      if (rxBuf[sizeof(JetsonToRioPacket) - 1] == expectedCrc) {
+        std::memcpy(&m_rxPacket, rxBuf, sizeof(JetsonToRioPacket));
+        uint8_t expectedSeq = static_cast<uint8_t>(m_lastRxSeq + 1);
+        if (m_rxCount > 0 && m_rxPacket.seq != expectedSeq) {
+          m_droppedCount += static_cast<uint8_t>(m_rxPacket.seq - expectedSeq);
+        }
+        m_lastRxSeq = m_rxPacket.seq;
+        m_rxCount++;
+        packetFound = true;
       }
     }
-
-    const int unreadBytes = bytesAvailable - bytesToRead;
-    if (unreadBytes > 0) {
-      char discard[kRxBufSize];
-      const int discardCount = std::min(unreadBytes, static_cast<int>(kRxBufSize));
-      m_serial.Read(discard, discardCount);
-    }
   }
-
-  constexpr size_t kPacketSize = sizeof(JetsonToRioPacket);
-  size_t scanIndex = 0;
-
-  while (m_rxBufLen >= kPacketSize && scanIndex + kPacketSize <= m_rxBufLen) {
-    if (m_rxBuf[scanIndex] != kMagicJetsonToRio[0] ||
-        m_rxBuf[scanIndex + 1] != kMagicJetsonToRio[1]) {
-      ++scanIndex;
-      continue;
-    }
-
-    JetsonToRioPacket candidate{};
-    std::memcpy(&candidate, m_rxBuf + scanIndex, kPacketSize);
-
-    const uint8_t crc =
-        ComputeCRC8(reinterpret_cast<const uint8_t*>(&candidate), kPacketSize - 1);
-    if (crc != candidate.crc8) {
-      ++scanIndex;
-      continue;
-    }
-
-    m_rxPacket = candidate;
-    if (m_rxCount > 0) {
-      const uint8_t expectedSeq = static_cast<uint8_t>(m_lastRxSeq + 1U);
-      if (m_rxPacket.seq != expectedSeq) {
-        m_droppedCount +=
-            static_cast<uint8_t>(m_rxPacket.seq - expectedSeq);
-      }
-    }
-    m_lastRxSeq = m_rxPacket.seq;
-    ++m_rxCount;
-    m_jetsonConnected = true;
-    m_lastRxTimer.Reset();  // reset watchdog; if no packet arrives within
-                            // kJetsonTimeoutSec, liveness check below clears the flag
-
-    const size_t consumed = scanIndex + kPacketSize;
-    const size_t remaining = m_rxBufLen - consumed;
-    if (remaining > 0) {
-      std::memmove(m_rxBuf, m_rxBuf + consumed, remaining);
-    }
-    m_rxBufLen = remaining;
-    scanIndex = 0;
-  }
-
-  if (scanIndex > 0 && scanIndex < m_rxBufLen) {
-    const size_t remaining = m_rxBufLen - scanIndex;
-    std::memmove(m_rxBuf, m_rxBuf + scanIndex, remaining);
-    m_rxBufLen = remaining;
-  } else if (scanIndex >= m_rxBufLen) {
-    m_rxBufLen = 0;
-  }
+  m_jetsonConnected = packetFound;
 
   // Liveness timeout: if no valid packet for kJetsonTimeoutSec, mark disconnected.
   // This allows the 500ms drivetrain watchdog in RobotPeriodic() to fire on USB loss.
