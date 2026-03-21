@@ -12,15 +12,26 @@
 
 #include "Robot.h"
 
+#include <cmath>
 #include <hal/FRCUsageReporting.h>
 
+#include <frc/Timer.h>
 #include <frc/smartdashboard/SmartDashboard.h>
 #include <frc2/command/CommandScheduler.h>
+#include <units/time.h>
 
 Robot::Robot() {
   EnableLiveWindowInTest(true);
   HAL_Report(HALUsageReporting::kResourceType_Framework,
              HALUsageReporting::kFramework_RobotBuilder);
+}
+
+void Robot::RobotInit() {
+  // MPU-6050 initialization: clear SLEEP bit and set full-scale ranges
+  m_imu.Write(0x6B, 0x00);  // PWR_MGMT_1: wake from sleep, use internal oscillator
+  m_imu.Write(0x1B, 0x00);  // GYRO_CONFIG: +/-250 deg/s (131 LSB/deg/s)
+  m_imu.Write(0x1C, 0x00);  // ACCEL_CONFIG: +/-2g (16384 LSB/g)
+  frc::Wait(50_ms);         // allow oscillator to stabilize
 }
 
 /**
@@ -31,7 +42,10 @@ Robot::Robot() {
  * <p> This runs after the mode specific periodic functions, but before
  * LiveWindow and SmartDashboard integrated updating.
  */
-void Robot::RobotPeriodic() { frc2::CommandScheduler::GetInstance().Run(); }
+void Robot::RobotPeriodic() {
+  ReadIMU();
+  frc2::CommandScheduler::GetInstance().Run();
+}
 
 /**
  * This function is called once each time the robot enters Disabled mode. You
@@ -76,6 +90,22 @@ void Robot::TeleopPeriodic() {}
  * This function is called periodically during test mode.
  */
 void Robot::TestPeriodic() {}
+
+void Robot::ReadIMU() {
+  // Read 6 bytes starting from GYRO_XOUT_H (0x43)
+  // Register layout: [GYRO_X_H, GYRO_X_L, GYRO_Y_H, GYRO_Y_L, GYRO_Z_H, GYRO_Z_L]
+  uint8_t regAddr = 0x43;
+  uint8_t buf[6] = {};
+  m_imu.WriteBulk(&regAddr, 1);
+  m_imu.ReadOnly(6, buf);
+
+  // Gyro Z is at bytes 4 (high) and 5 (low)
+  int16_t gyroZRaw = static_cast<int16_t>((buf[4] << 8) | buf[5]);
+
+  // 131 LSB/(deg/s) at +/-250 deg/s range; convert to rad/s
+  double yawRateRad = (gyroZRaw / 131.0) * (M_PI / 180.0);
+  m_container->m_drivetrain.SetGyroYawRate(yawRateRad);
+}
 
 #ifndef RUNNING_FRC_TESTS
 int main() { return frc::StartRobot<Robot>(); }
