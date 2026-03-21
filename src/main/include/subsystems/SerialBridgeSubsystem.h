@@ -89,6 +89,9 @@ class SerialBridgeSubsystem : public frc2::SubsystemBase {
   uint8_t m_txSeq{0};
   uint8_t m_lastRxSeq{0};
   bool m_jetsonConnected{false};
+  frc::Timer m_lastRxTimer;  // resets on every valid packet; expires = disconnected
+  // 200ms = 10 missed packets at 50 Hz. Adjust if Jetson send rate changes.
+  static constexpr double kJetsonTimeoutSec = 0.200;
   uint32_t m_rxCount{0};
   uint32_t m_droppedCount{0};
   static constexpr size_t kRxBufSize = 256;

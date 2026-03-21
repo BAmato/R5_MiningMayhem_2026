@@ -27,6 +27,9 @@ SerialBridgeSubsystem::SerialBridgeSubsystem(frc::SerialPort::Port port)
 
   std::memset(&m_txPacket, 0, sizeof(m_txPacket));
   std::memset(&m_rxPacket, 0, sizeof(m_rxPacket));
+  // Start timer immediately so it expires before the first packet arrives,
+  // keeping m_jetsonConnected = false until a real packet is received.
+  m_lastRxTimer.Start();
 }
 
 uint8_t SerialBridgeSubsystem::ComputeCRC8(const uint8_t* data, size_t length) {
@@ -110,6 +113,8 @@ void SerialBridgeSubsystem::Periodic() {
     m_lastRxSeq = m_rxPacket.seq;
     ++m_rxCount;
     m_jetsonConnected = true;
+    m_lastRxTimer.Reset();  // reset watchdog; if no packet arrives within
+                            // kJetsonTimeoutSec, liveness check below clears the flag
 
     const size_t consumed = scanIndex + kPacketSize;
     const size_t remaining = m_rxBufLen - consumed;
@@ -126,6 +131,12 @@ void SerialBridgeSubsystem::Periodic() {
     m_rxBufLen = remaining;
   } else if (scanIndex >= m_rxBufLen) {
     m_rxBufLen = 0;
+  }
+
+  // Liveness timeout: if no valid packet for kJetsonTimeoutSec, mark disconnected.
+  // This allows the 500ms drivetrain watchdog in RobotPeriodic() to fire on USB loss.
+  if (m_jetsonConnected && m_lastRxTimer.Get().value() > kJetsonTimeoutSec) {
+    m_jetsonConnected = false;
   }
 
   frc::SmartDashboard::PutBoolean("Bridge/JetsonConnected", m_jetsonConnected);
