@@ -68,6 +68,7 @@ void Robot::RobotPeriodic() {
                                     m_container->m_bridge.GetCmdOmega());
     m_container->m_beaconArm.Set(m_container->m_bridge.GetBeaconArmPos());
     m_container->m_containerArm.Set(m_container->m_bridge.GetContainerArmPos());
+    m_container->m_sortGate.Set(m_container->m_bridge.GetSortGatePos());
     m_cmdVelWatchdog.Reset();
     m_cmdVelWatchdog.Start();
   } else if (m_cmdVelWatchdog.Get() > 0.5_s) {
