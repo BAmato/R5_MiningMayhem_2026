@@ -129,9 +129,20 @@ void SerialBridgeSubsystem::Periodic() {
   }
 
   frc::SmartDashboard::PutBoolean("Bridge/JetsonConnected", m_jetsonConnected);
+  frc::SmartDashboard::PutNumber("Bridge/TxSeq", m_txSeq);
   frc::SmartDashboard::PutNumber("Bridge/RxCount", m_rxCount);
   frc::SmartDashboard::PutNumber("Bridge/DroppedPkts", m_droppedCount);
-  frc::SmartDashboard::PutNumber("Bridge/CmdVx", m_rxPacket.cmd_vx);
+  // Commands received from Jetson
+  frc::SmartDashboard::PutNumber("Bridge/Cmd_Vx", m_rxPacket.cmd_vx);
+  frc::SmartDashboard::PutNumber("Bridge/Cmd_Vy", m_rxPacket.cmd_vy);
+  frc::SmartDashboard::PutNumber("Bridge/Cmd_Omega", m_rxPacket.cmd_omega);
+  // Servo positions commanded by Jetson
+  frc::SmartDashboard::PutNumber("Bridge/BeaconArmPos", m_rxPacket.beacon_arm_pos);
+  frc::SmartDashboard::PutNumber("Bridge/ContainerArmPos", m_rxPacket.container_arm_pos);
+  frc::SmartDashboard::PutNumber("Bridge/SortGatePos", m_rxPacket.sort_gate_pos);
+  // Flags
+  frc::SmartDashboard::PutBoolean("Bridge/StartSignalFwd",
+      (m_rxPacket.flags & 0x01U) != 0U);
 }
 
 void SerialBridgeSubsystem::SetOdometry(double x,
