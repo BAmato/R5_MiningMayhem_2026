@@ -11,6 +11,7 @@
 // ROBOTBUILDER TYPE: Robot.
 #pragma once
 
+#include <frc/I2C.h>
 #include <frc/TimedRobot.h>
 #include <frc2/command/Command.h>
 
@@ -19,6 +20,7 @@
 class Robot : public frc::TimedRobot {
  public:
   Robot();
+  void RobotInit() override;
   void RobotPeriodic() override;
   void DisabledInit() override;
   void DisabledPeriodic() override;
@@ -34,4 +36,6 @@ class Robot : public frc::TimedRobot {
   frc2::Command* m_autonomousCommand = nullptr;
 
   RobotContainer* m_container = RobotContainer::GetInstance();
+  frc::I2C m_imu{frc::I2C::Port::kOnboard, 0x68};
+  void ReadIMU();
 };
