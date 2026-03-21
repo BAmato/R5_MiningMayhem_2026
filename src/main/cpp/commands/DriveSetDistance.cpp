@@ -13,7 +13,7 @@ void DriveSetDistance::Initialize() {
 }
 
 void DriveSetDistance::Execute() {
-  RobotContainer::GetInstance()->m_drivetrain.DriveArcade(-0.5, 0.0);
+  RobotContainer::GetInstance()->m_drivetrain.DriveArcade(0.5, 0.0);
 }
 
 bool DriveSetDistance::IsFinished() {
