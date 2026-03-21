@@ -8,7 +8,7 @@
 class SortingSystem : public frc2::SubsystemBase {
  private:
   frc::AnalogInput m_hallSensor{0};
-  nt::GenericEntry m_voltageEntry;
+  nt::GenericEntry* m_voltageEntry = nullptr;
   // CALIBRATE both values by measuring real sensor readings.
   // Geodinium: contains neodymium magnets — reliably elevated voltage.
   // Nebulite: plain PLA — lower but above the noise floor.
