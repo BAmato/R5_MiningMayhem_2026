@@ -32,6 +32,11 @@ void Robot::RobotInit() {
   m_imu.Write(0x1B, 0x00);  // GYRO_CONFIG: +/-250 deg/s (131 LSB/deg/s)
   m_imu.Write(0x1C, 0x00);  // ACCEL_CONFIG: +/-2g (16384 LSB/g)
   frc::Wait(50_ms);         // allow oscillator to stabilize
+
+  const bool roboClawOk = m_container->m_drivetrain.VerifyControllers();
+  frc::SmartDashboard::PutBoolean("RoboClaw/OK", roboClawOk);
+  frc::SmartDashboard::PutString("RoboClaw/Status",
+                                 roboClawOk ? "OK" : "MISSING - check MXP wiring and Motion Studio config");
 }
 
 /**
