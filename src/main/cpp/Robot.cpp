@@ -48,8 +48,10 @@ void Robot::RobotPeriodic() {
   // --- Populate serial bridge TX ---
   double ox, oy, oth;
   m_container->m_drivetrain.GetOdometry(ox, oy, oth);
+  // odom_vtheta must be angular velocity in rad/s, not the heading angle.
+  // GetGyroYawRate() returns the current yaw rate from the MPU-6050.
   m_container->m_bridge.SetOdometry(ox, oy, oth, 0.0, 0.0,
-                                    m_container->m_drivetrain.GetHeading());
+                                    m_container->m_drivetrain.GetGyroYawRate());
   m_container->m_bridge.SetIMUData(m_container->m_drivetrain.GetGyroYawRate());
   m_container->m_bridge.SetEncoders(m_container->m_drivetrain.GetEncoderLeft(),
                                     m_container->m_drivetrain.GetEncoderRight(),
