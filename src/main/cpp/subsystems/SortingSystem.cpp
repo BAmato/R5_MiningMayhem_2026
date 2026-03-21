@@ -7,14 +7,14 @@ SortingSystem::SortingSystem() {
   SetSubsystem("SortingSystem");
 
   auto& tab = frc::Shuffleboard::GetTab("Sorting System");
-  m_voltageEntry = &tab.Add("Hall Voltage", 0.0).GetEntry();
+  m_voltageEntry = tab.Add("Hall Voltage", 0.0).GetEntry();
 }
 
 void SortingSystem::Periodic() {
   const double voltage = m_hallSensor.GetVoltage();
 
   // Update Shuffleboard "Sorting System" tab
-  m_voltageEntry->SetDouble(voltage);
+  m_voltageEntry.SetDouble(voltage);
 
   // Also publish to SmartDashboard for easy access without opening Shuffleboard
   frc::SmartDashboard::PutNumber("Hall/Voltage", voltage);
