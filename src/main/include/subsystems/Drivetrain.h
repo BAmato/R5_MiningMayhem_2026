@@ -39,6 +39,7 @@ class Drivetrain : public frc2::SubsystemBase {
   void GetOdometry(double& x, double& y, double& theta) const;
   void ResetOdometry(double x = 0.0, double y = 0.0, double theta = 0.0);
   void SetGyroYawRate(double yawRateRadPerSec);
+  double GetGyroYawRate() const;
   int32_t GetEncoderLeft() const;
   int32_t GetEncoderRight() const;
   int32_t GetEncoderHoriz() const;
