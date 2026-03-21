@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
+#include <string>
 
 #include <frc/SerialPort.h>
 #include <frc2/command/SubsystemBase.h>
@@ -45,6 +47,8 @@ class Drivetrain : public frc2::SubsystemBase {
   int32_t GetEncoderHoriz() const;
   double GetHeading() const;
   bool VerifyControllers();
+  std::optional<std::string> GetFirmwareVersionVertical();
+  std::optional<std::string> GetFirmwareVersionHorizontal();
 
  private:
   static double Clamp(double value, double minValue, double maxValue);

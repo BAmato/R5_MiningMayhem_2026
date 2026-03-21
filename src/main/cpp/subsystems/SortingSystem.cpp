@@ -11,7 +11,25 @@ SortingSystem::SortingSystem() {
 }
 
 void SortingSystem::Periodic() {
-  m_voltageEntry->SetDouble(m_hallSensor.GetVoltage());
+  const double voltage = m_hallSensor.GetVoltage();
+
+  // Update Shuffleboard "Sorting System" tab
+  m_voltageEntry->SetDouble(voltage);
+
+  // Also publish to SmartDashboard for easy access without opening Shuffleboard
+  frc::SmartDashboard::PutNumber("Hall/Voltage", voltage);
+
+  // Human-readable material detection state
+  const char* stateStr = "EMPTY";
+  if (voltage > kGeodiniumThreshold) {
+    stateStr = "GEODINIUM";
+  } else if (voltage > kNebuliteMinVoltage) {
+    stateStr = "NEBULITE";
+  }
+  frc::SmartDashboard::PutString("Hall/State", stateStr);
+  frc::SmartDashboard::PutBoolean("Hall/IsGeodinium", voltage > kGeodiniumThreshold);
+  frc::SmartDashboard::PutBoolean("Hall/IsNebulite",
+      voltage > kNebuliteMinVoltage && voltage <= kGeodiniumThreshold);
 }
 
 void SortingSystem::SimulationPeriodic() {}
@@ -22,4 +40,9 @@ double SortingSystem::GetHallVoltage() const {
 
 bool SortingSystem::IsGeodinium() const {
   return GetHallVoltage() > kGeodiniumThreshold;
+}
+
+bool SortingSystem::IsNebulite() const {
+  const double v = GetHallVoltage();
+  return v > kNebuliteMinVoltage && v <= kGeodiniumThreshold;
 }

@@ -37,6 +37,16 @@ void Robot::RobotInit() {
   frc::SmartDashboard::PutBoolean("RoboClaw/OK", roboClawOk);
   frc::SmartDashboard::PutString("RoboClaw/Status",
                                  roboClawOk ? "OK" : "MISSING - check MXP wiring and Motion Studio config");
+
+  // Publish firmware version strings at startup for version verification.
+  // These persist on SmartDashboard until the next deploy.
+  // Check these match your Motion Studio firmware version.
+  const auto vertFw = m_container->m_drivetrain.GetFirmwareVersionVertical();
+  const auto horizFw = m_container->m_drivetrain.GetFirmwareVersionHorizontal();
+  frc::SmartDashboard::PutString("RoboClaw/Firmware_0x80",
+      vertFw.value_or("NO RESPONSE"));
+  frc::SmartDashboard::PutString("RoboClaw/Firmware_0x81",
+      horizFw.value_or("NO RESPONSE"));
 }
 
 /**
@@ -75,6 +85,7 @@ void Robot::RobotPeriodic() {
   }
   m_container->m_bridge.SetMatchTimeMs(
       static_cast<uint16_t>(m_matchTimeRemaining * 1000.0));
+  frc::SmartDashboard::PutNumber("Match/TimeRemainingSec", m_matchTimeRemaining);
 
   // --- Apply Jetson commands ---
   if (m_container->m_bridge.IsJetsonConnected()) {
@@ -89,6 +100,10 @@ void Robot::RobotPeriodic() {
   } else if (m_cmdVelWatchdog.Get() > 0.5_s) {
     m_container->m_drivetrain.StopDrive();
   }
+
+  frc::SmartDashboard::PutNumber("Servo/BeaconArmPos", m_container->m_beaconArm.Get());
+  frc::SmartDashboard::PutNumber("Servo/ContainerArmPos", m_container->m_containerArm.Get());
+  frc::SmartDashboard::PutNumber("Servo/SortGatePos", m_container->m_sortGate.Get());
 
   frc2::CommandScheduler::GetInstance().Run();
 }
