@@ -61,6 +61,16 @@ void Robot::RobotPeriodic() {
   m_container->m_bridge.SetHallEvent(hallCode);
   m_container->m_bridge.SetMatchState(m_matchState);
 
+  // Update and transmit remaining match time.
+  // Note: Jetson mission_state_node owns authoritative timing.
+  // This is a diagnostic fallback so match_time_ms is never perpetually 0.
+  if (m_matchStarted) {
+    m_matchTimeRemaining = 180.0 - m_matchTimer.Get().value();
+    if (m_matchTimeRemaining < 0.0) { m_matchTimeRemaining = 0.0; }
+  }
+  m_container->m_bridge.SetMatchTimeMs(
+      static_cast<uint16_t>(m_matchTimeRemaining * 1000.0));
+
   // --- Apply Jetson commands ---
   if (m_container->m_bridge.IsJetsonConnected()) {
     m_container->m_drivetrain.Drive(m_container->m_bridge.GetCmdVx(),
@@ -91,6 +101,12 @@ void Robot::DisabledPeriodic() {}
  * RobotContainer} class.
  */
 void Robot::AutonomousInit() {
+  // Start roboRIO-local match timer for diagnostic match_time_ms field.
+  m_matchStarted = true;
+  m_matchTimer.Reset();
+  m_matchTimer.Start();
+  m_matchTimeRemaining = 180.0;
+
   m_autonomousCommand = m_container->GetAutonomousCommand();
 
   if (m_autonomousCommand != nullptr) {

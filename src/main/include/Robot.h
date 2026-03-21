@@ -40,5 +40,8 @@ class Robot : public frc::TimedRobot {
   frc::I2C m_imu{frc::I2C::Port::kOnboard, 0x68};
   uint8_t m_matchState{0};
   frc::Timer m_cmdVelWatchdog;
+  frc::Timer m_matchTimer;         // starts at AutonomousInit(); measures elapsed match time
+  bool m_matchStarted{false};      // true once autonomous or teleop begins
+  double m_matchTimeRemaining{180.0};  // seconds; diagnostic only
   void ReadIMU();
 };
