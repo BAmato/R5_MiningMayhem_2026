@@ -12,6 +12,7 @@
 #pragma once
 
 #include <frc/I2C.h>
+#include <frc/Timer.h>
 #include <frc/TimedRobot.h>
 #include <frc2/command/Command.h>
 
@@ -37,5 +38,7 @@ class Robot : public frc::TimedRobot {
 
   RobotContainer* m_container = RobotContainer::GetInstance();
   frc::I2C m_imu{frc::I2C::Port::kOnboard, 0x68};
+  uint8_t m_matchState{0};
+  frc::Timer m_cmdVelWatchdog;
   void ReadIMU();
 };

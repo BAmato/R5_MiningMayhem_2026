@@ -44,6 +44,34 @@ void Robot::RobotInit() {
  */
 void Robot::RobotPeriodic() {
   ReadIMU();
+
+  // --- Populate serial bridge TX ---
+  double ox, oy, oth;
+  m_container->m_drivetrain.GetOdometry(ox, oy, oth);
+  m_container->m_bridge.SetOdometry(ox, oy, oth, 0.0, 0.0,
+                                    m_container->m_drivetrain.GetHeading());
+  m_container->m_bridge.SetIMUData(m_container->m_drivetrain.GetGyroYawRate());
+  m_container->m_bridge.SetEncoders(m_container->m_drivetrain.GetEncoderLeft(),
+                                    m_container->m_drivetrain.GetEncoderRight(),
+                                    m_container->m_drivetrain.GetEncoderHoriz());
+  double hallV = m_container->m_sortingSystem.GetHallVoltage();
+  uint8_t hallCode = (hallV > 2.5) ? 1 : ((hallV > 0.5) ? 2 : 0);  // CALIBRATE
+  m_container->m_bridge.SetHallEvent(hallCode);
+  m_container->m_bridge.SetMatchState(m_matchState);
+
+  // --- Apply Jetson commands ---
+  if (m_container->m_bridge.IsJetsonConnected()) {
+    m_container->m_drivetrain.Drive(m_container->m_bridge.GetCmdVx(),
+                                    m_container->m_bridge.GetCmdVy(),
+                                    m_container->m_bridge.GetCmdOmega());
+    m_container->m_beaconArm.Set(m_container->m_bridge.GetBeaconArmPos());
+    m_container->m_containerArm.Set(m_container->m_bridge.GetContainerArmPos());
+    m_cmdVelWatchdog.Reset();
+    m_cmdVelWatchdog.Start();
+  } else if (m_cmdVelWatchdog.Get() > 0.5_s) {
+    m_container->m_drivetrain.StopDrive();
+  }
+
   frc2::CommandScheduler::GetInstance().Run();
 }
 

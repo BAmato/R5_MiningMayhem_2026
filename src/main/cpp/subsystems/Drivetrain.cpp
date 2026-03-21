@@ -136,6 +136,10 @@ void Drivetrain::SetGyroYawRate(double yawRateRadPerSec) {
   m_gyroYawRateRadPerSec = yawRateRadPerSec;
 }
 
+double Drivetrain::GetGyroYawRate() const {
+  return m_gyroYawRateRadPerSec;
+}
+
 int32_t Drivetrain::GetEncoderLeft() const {
   return m_leftEncoderCount;
 }
