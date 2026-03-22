@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include <frc/DriverStation.h>
+
 #include <units/time.h>
 
 namespace {
@@ -19,14 +19,14 @@ SerialBridgeSubsystem::SerialBridgeSubsystem(frc::SerialPort::Port port) {
   // TX socket
   m_txSock = socket(AF_INET, SOCK_DGRAM, 0);
   if (m_txSock < 0) {
-    frc::DriverStation::ReportWarning("SerialBridge: failed to create TX socket");
+    printf("SerialBridge: failed to create TX socket\n");
     return;
   }
 
   // RX socket
   m_rxSock = socket(AF_INET, SOCK_DGRAM, 0);
   if (m_rxSock < 0) {
-    frc::DriverStation::ReportWarning("SerialBridge: failed to create RX socket");
+    printf("SerialBridge: failed to create RX socket\n");
     close(m_txSock);
     m_txSock = -1;
     return;
@@ -45,7 +45,7 @@ SerialBridgeSubsystem::SerialBridgeSubsystem(frc::SerialPort::Port port) {
   rxAddr.sin_addr.s_addr = INADDR_ANY;
   rxAddr.sin_port = htons(RX_PORT);
   if (bind(m_rxSock, reinterpret_cast<struct sockaddr*>(&rxAddr), sizeof(rxAddr)) < 0) {
-    frc::DriverStation::ReportWarning("SerialBridge: failed to bind RX socket");
+    printf("SerialBridge: failed to bind RX socket\n");
     close(m_txSock);
     m_txSock = -1;
     close(m_rxSock);
