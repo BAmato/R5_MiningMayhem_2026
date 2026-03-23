@@ -48,7 +48,7 @@ struct JetsonToRioPacket {
   float beacon_arm_pos;
   float container_arm_pos;
   float sort_gate_pos;
-  uint8_t flags;
+  uint8_t flags;  // Bit0: start_signal_fwd, Bit1: software_enable
   uint8_t reserved;
   uint8_t crc8;
 };
@@ -82,6 +82,9 @@ class SerialBridgeSubsystem : public frc2::SubsystemBase {
   float GetContainerArmPos() const;
   float GetSortGatePos() const;
   bool GetStartSignalForwarded() const;
+  bool GetSoftwareEnable() const {
+    return (m_rxPacket.flags & 0x02) != 0;
+  }
   bool IsJetsonConnected() const;
   uint32_t GetRxCount() const;
   uint32_t GetDroppedCount() const;
