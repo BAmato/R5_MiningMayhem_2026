@@ -216,34 +216,28 @@ bool RoboClawDriver::WriteCommand(const uint8_t* packet, size_t length) {
     return false;
   }
 
-  uint8_t ack = 0;
-  const auto startTime = frc::Timer::GetFPGATimestamp();
-  const auto deadline = startTime + units::millisecond_t{kReadTimeoutMs};
-  while (frc::Timer::GetFPGATimestamp() < deadline) {
-    if (m_serial.GetBytesReceived() > 0) {
-      const int got = m_serial.Read(reinterpret_cast<char*>(&ack), 1);
-      if (got == 1) {
-        if (ack == kAck) {
-          return true;
-        }
-        ++m_errorCount;
-        return false;
-      }
-    }
-    std::this_thread::sleep_for(std::chrono::microseconds(100));
-  }
-
-  ++m_errorCount;
-  return false;
+  return true;
 }
 
 bool RoboClawDriver::ReadCommand(const uint8_t* header, size_t headerLen,
                                  uint8_t* response, size_t responseLen) {
   FlushInput();
 
-  const int written = m_serial.Write(reinterpret_cast<const char*>(header),
-                                     static_cast<int>(headerLen));
-  if (written != static_cast<int>(headerLen)) {
+  uint8_t request[kMaxResponseLen] = {};
+  if (headerLen + 2 > std::size(request)) {
+    ++m_errorCount;
+    return false;
+  }
+
+  std::memcpy(request, header, headerLen);
+  const uint16_t requestCrc = CRC16(header, headerLen);
+  request[headerLen] = static_cast<uint8_t>(requestCrc >> 8);
+  request[headerLen + 1] = static_cast<uint8_t>(requestCrc & 0xFF);
+
+  const size_t requestLen = headerLen + 2;
+  const int written = m_serial.Write(reinterpret_cast<const char*>(request),
+                                     static_cast<int>(requestLen));
+  if (written != static_cast<int>(requestLen)) {
     ++m_errorCount;
     return false;
   }
