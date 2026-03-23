@@ -15,6 +15,7 @@
 #include <cmath>
 #include <hal/FRCUsageReporting.h>
 
+#include <frc/DriverStation.h>
 #include <frc/Timer.h>
 #include <frc/smartdashboard/SmartDashboard.h>
 #include <frc2/command/CommandScheduler.h>
@@ -58,6 +59,8 @@ void Robot::RobotInit() {
  * LiveWindow and SmartDashboard integrated updating.
  */
 void Robot::RobotPeriodic() {
+  static int dashboardCounter = 0;
+
   ReadIMU();
 
   // --- Populate serial bridge TX ---
@@ -85,10 +88,13 @@ void Robot::RobotPeriodic() {
   }
   m_container->m_bridge.SetMatchTimeMs(
       static_cast<uint16_t>(m_matchTimeRemaining * 1000.0));
-  frc::SmartDashboard::PutNumber("Match/TimeRemainingSec", m_matchTimeRemaining);
 
   // --- Apply Jetson commands ---
-  if (m_container->m_bridge.IsJetsonConnected()) {
+  bool shouldDrive = m_container->m_bridge.IsJetsonConnected() &&
+                     (frc::DriverStation::IsAutonomousEnabled() ||
+                      m_container->m_bridge.GetSoftwareEnable());
+
+  if (shouldDrive) {
     m_container->m_drivetrain.Drive(m_container->m_bridge.GetCmdVx(),
                                     m_container->m_bridge.GetCmdVy(),
                                     m_container->m_bridge.GetCmdOmega());
@@ -101,9 +107,13 @@ void Robot::RobotPeriodic() {
     m_container->m_drivetrain.StopDrive();
   }
 
-  frc::SmartDashboard::PutNumber("Servo/BeaconArmPos", m_container->m_beaconArm.Get());
-  frc::SmartDashboard::PutNumber("Servo/ContainerArmPos", m_container->m_containerArm.Get());
-  frc::SmartDashboard::PutNumber("Servo/SortGatePos", m_container->m_sortGate.Get());
+  if (++dashboardCounter >= 5) {
+    dashboardCounter = 0;
+    frc::SmartDashboard::PutNumber("Match/TimeRemainingSec", m_matchTimeRemaining);
+    frc::SmartDashboard::PutNumber("Servo/BeaconArmPos", m_container->m_beaconArm.Get());
+    frc::SmartDashboard::PutNumber("Servo/ContainerArmPos", m_container->m_containerArm.Get());
+    frc::SmartDashboard::PutNumber("Servo/SortGatePos", m_container->m_sortGate.Get());
+  }
 
   frc2::CommandScheduler::GetInstance().Run();
 }

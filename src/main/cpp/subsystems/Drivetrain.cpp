@@ -12,14 +12,18 @@ Drivetrain::Drivetrain() {
 }
 
 void Drivetrain::Periodic() {
-  if (const auto left = m_roboclaw.ReadM1Encoder(kAddrVertical)) {
-    m_leftEncoderCount = left->count;
-  }
-  if (const auto right = m_roboclaw.ReadM2Encoder(kAddrVertical)) {
-    m_rightEncoderCount = right->count;
-  }
-  if (const auto horiz = m_roboclaw.ReadM1Encoder(kAddrHorizontal)) {
-    m_horizEncoderCount = horiz->count;
+  static int dashboardCounter = 0;
+
+  m_encoderReadPhase = (m_encoderReadPhase + 1) % 3;
+  if (m_encoderReadPhase == 0) {
+    auto encL = m_roboclaw.ReadM1Encoder(kAddrVertical);
+    if (encL) m_leftEncoderCount = encL->count;
+  } else if (m_encoderReadPhase == 1) {
+    auto encR = m_roboclaw.ReadM2Encoder(kAddrVertical);
+    if (encR) m_rightEncoderCount = encR->count;
+  } else {
+    auto encH = m_roboclaw.ReadM1Encoder(kAddrHorizontal);
+    if (encH) m_horizEncoderCount = encH->count;
   }
 
   if (!m_haveEncoderReference) {
@@ -69,41 +73,45 @@ void Drivetrain::Periodic() {
   m_roboclaw.SetM1M2Speed(kAddrVertical, leftQpps, rightQpps);
   m_roboclaw.SetM1Speed(kAddrHorizontal, horizQpps);
 
-  // --- Odometry ---
-  frc::SmartDashboard::PutNumber("Drive/OdomX_m", m_odomX);
-  frc::SmartDashboard::PutNumber("Drive/OdomY_m", m_odomY);
-  frc::SmartDashboard::PutNumber("Drive/OdomTheta_deg", m_odomTheta * 180.0 / kPi);
-  frc::SmartDashboard::PutNumber("Drive/AvgDistanceMeters", GetAverageDistanceMeters());
+  if (++dashboardCounter >= 5) {
+    dashboardCounter = 0;
 
-  // --- Raw encoder counts ---
-  frc::SmartDashboard::PutNumber("Drive/EncLeft_counts", m_leftEncoderCount);
-  frc::SmartDashboard::PutNumber("Drive/EncRight_counts", m_rightEncoderCount);
-  frc::SmartDashboard::PutNumber("Drive/EncHoriz_counts", m_horizEncoderCount);
+    // --- Odometry ---
+    frc::SmartDashboard::PutNumber("Drive/OdomX_m", m_odomX);
+    frc::SmartDashboard::PutNumber("Drive/OdomY_m", m_odomY);
+    frc::SmartDashboard::PutNumber("Drive/OdomTheta_deg", m_odomTheta * 180.0 / kPi);
+    frc::SmartDashboard::PutNumber("Drive/AvgDistanceMeters", GetAverageDistanceMeters());
 
-  // --- IMU ---
-  frc::SmartDashboard::PutNumber("IMU/YawRate_radps", m_gyroYawRateRadPerSec);
-  frc::SmartDashboard::PutNumber("IMU/YawRate_degps", m_gyroYawRateRadPerSec * 180.0 / kPi);
+    // --- Raw encoder counts ---
+    frc::SmartDashboard::PutNumber("Drive/EncLeft_counts", m_leftEncoderCount);
+    frc::SmartDashboard::PutNumber("Drive/EncRight_counts", m_rightEncoderCount);
+    frc::SmartDashboard::PutNumber("Drive/EncHoriz_counts", m_horizEncoderCount);
 
-  // --- Current motor commands (what was sent to RoboClaw this cycle) ---
-  frc::SmartDashboard::PutNumber("Drive/Cmd_Vx_mps", m_cmdVx);
-  frc::SmartDashboard::PutNumber("Drive/Cmd_Vy_mps", m_cmdVy);
-  frc::SmartDashboard::PutNumber("Drive/Cmd_Omega_radps", m_cmdOmega);
-  frc::SmartDashboard::PutNumber("Drive/QPPS_Left",
-      static_cast<double>(static_cast<int32_t>(std::lround(
-          (m_cmdVx - m_cmdOmega * kWheelBaseM / 2.0) * kVertCountsPerM))));
-  frc::SmartDashboard::PutNumber("Drive/QPPS_Right",
-      static_cast<double>(static_cast<int32_t>(std::lround(
-          (m_cmdVx + m_cmdOmega * kWheelBaseM / 2.0) * kVertCountsPerM))));
-  frc::SmartDashboard::PutNumber("Drive/QPPS_Horiz",
-      static_cast<double>(static_cast<int32_t>(std::lround(
-          m_cmdVy * kHorizCountsPerM))));
+    // --- IMU ---
+    frc::SmartDashboard::PutNumber("IMU/YawRate_radps", m_gyroYawRateRadPerSec);
+    frc::SmartDashboard::PutNumber("IMU/YawRate_degps", m_gyroYawRateRadPerSec * 180.0 / kPi);
 
-  // --- Heading hold diagnostics ---
-  frc::SmartDashboard::PutNumber("Drive/HeadingHoldTarget_deg",
-      m_headingHoldTarget * 180.0 / kPi);
+    // --- Current motor commands (what was sent to RoboClaw this cycle) ---
+    frc::SmartDashboard::PutNumber("Drive/Cmd_Vx_mps", m_cmdVx);
+    frc::SmartDashboard::PutNumber("Drive/Cmd_Vy_mps", m_cmdVy);
+    frc::SmartDashboard::PutNumber("Drive/Cmd_Omega_radps", m_cmdOmega);
+    frc::SmartDashboard::PutNumber("Drive/QPPS_Left",
+        static_cast<double>(static_cast<int32_t>(std::lround(
+            (m_cmdVx - m_cmdOmega * kWheelBaseM / 2.0) * kVertCountsPerM))));
+    frc::SmartDashboard::PutNumber("Drive/QPPS_Right",
+        static_cast<double>(static_cast<int32_t>(std::lround(
+            (m_cmdVx + m_cmdOmega * kWheelBaseM / 2.0) * kVertCountsPerM))));
+    frc::SmartDashboard::PutNumber("Drive/QPPS_Horiz",
+        static_cast<double>(static_cast<int32_t>(std::lround(
+            m_cmdVy * kHorizCountsPerM))));
 
-  // --- RoboClaw health ---
-  frc::SmartDashboard::PutNumber("RoboClaw/ErrorCount", m_roboclaw.GetErrorCount());
+    // --- Heading hold diagnostics ---
+    frc::SmartDashboard::PutNumber("Drive/HeadingHoldTarget_deg",
+        m_headingHoldTarget * 180.0 / kPi);
+
+    // --- RoboClaw health ---
+    frc::SmartDashboard::PutNumber("RoboClaw/ErrorCount", m_roboclaw.GetErrorCount());
+  }
 }
 
 void Drivetrain::SimulationPeriodic() {}

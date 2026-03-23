@@ -74,5 +74,6 @@ class Drivetrain : public frc2::SubsystemBase {
   int32_t m_prevLeftEncoderCount{0};
   int32_t m_prevRightEncoderCount{0};
   int32_t m_prevHorizEncoderCount{0};
+  int m_encoderReadPhase{0};
   bool m_haveEncoderReference{false};
 };
