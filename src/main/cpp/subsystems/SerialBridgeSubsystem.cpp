@@ -113,7 +113,6 @@ void SerialBridgeSubsystem::Periodic() {
 
   uint8_t rxBuf[sizeof(JetsonToRioPacket)];
   ssize_t received = recvfrom(m_rxSock, rxBuf, sizeof(rxBuf), 0, nullptr, nullptr);
-  bool packetFound = false;
 
   if (received == static_cast<ssize_t>(sizeof(JetsonToRioPacket))) {
     if (rxBuf[0] == kMagicJetsonToRio[0] && rxBuf[1] == kMagicJetsonToRio[1]) {
@@ -126,17 +125,15 @@ void SerialBridgeSubsystem::Periodic() {
         }
         m_lastRxSeq = m_rxPacket.seq;
         m_rxCount++;
-        packetFound = true;
+        m_lastRxTimer.Restart();
       }
     }
   }
-  m_jetsonConnected = packetFound;
 
   // Liveness timeout: if no valid packet for kJetsonTimeoutSec, mark disconnected.
   // This allows the 500ms drivetrain watchdog in RobotPeriodic() to fire on USB loss.
-  if (m_jetsonConnected && m_lastRxTimer.Get().value() > kJetsonTimeoutSec) {
-    m_jetsonConnected = false;
-  }
+  m_jetsonConnected =
+      m_rxCount > 0 && m_lastRxTimer.Get().value() <= kJetsonTimeoutSec;
 
   frc::SmartDashboard::PutBoolean("Bridge/JetsonConnected", m_jetsonConnected);
   frc::SmartDashboard::PutNumber("Bridge/TxSeq", m_txSeq);
