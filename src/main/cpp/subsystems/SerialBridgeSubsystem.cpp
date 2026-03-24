@@ -1,7 +1,7 @@
 #include "subsystems/SerialBridgeSubsystem.h"
 
 #include <algorithm>
-
+#include <cerrno>
 
 #include <units/time.h>
 
@@ -112,31 +112,45 @@ void SerialBridgeSubsystem::Periodic() {
   // sendto failure silently ignored — Jetson unreachable is not fatal
 
   uint8_t rxBuf[sizeof(JetsonToRioPacket)];
-  ssize_t received = recvfrom(m_rxSock, rxBuf, sizeof(rxBuf), 0, nullptr, nullptr);
   bool packetFound = false;
 
-  if (received == static_cast<ssize_t>(sizeof(JetsonToRioPacket))) {
-    if (rxBuf[0] == kMagicJetsonToRio[0] && rxBuf[1] == kMagicJetsonToRio[1]) {
-      uint8_t expectedCrc = ComputeCRC8(rxBuf, sizeof(JetsonToRioPacket) - 1);
-      if (rxBuf[sizeof(JetsonToRioPacket) - 1] == expectedCrc) {
-        std::memcpy(&m_rxPacket, rxBuf, sizeof(JetsonToRioPacket));
-        uint8_t expectedSeq = static_cast<uint8_t>(m_lastRxSeq + 1);
-        if (m_rxCount > 0 && m_rxPacket.seq != expectedSeq) {
-          m_droppedCount += static_cast<uint8_t>(m_rxPacket.seq - expectedSeq);
+  // Drain all queued UDP packets this tick and keep the latest valid command.
+  while (true) {
+    ssize_t received = recvfrom(m_rxSock, rxBuf, sizeof(rxBuf), 0, nullptr, nullptr);
+    if (received < 0) {
+      if (errno == EWOULDBLOCK || errno == EAGAIN) {
+        break;
+      }
+      // Unexpected socket read error; keep previous data and retry next tick.
+      break;
+    }
+
+    if (received == static_cast<ssize_t>(sizeof(JetsonToRioPacket))) {
+      if (rxBuf[0] == kMagicJetsonToRio[0] && rxBuf[1] == kMagicJetsonToRio[1]) {
+        uint8_t expectedCrc = ComputeCRC8(rxBuf, sizeof(JetsonToRioPacket) - 1);
+        if (rxBuf[sizeof(JetsonToRioPacket) - 1] == expectedCrc) {
+          std::memcpy(&m_rxPacket, rxBuf, sizeof(JetsonToRioPacket));
+          uint8_t expectedSeq = static_cast<uint8_t>(m_lastRxSeq + 1);
+          if (m_rxCount > 0 && m_rxPacket.seq != expectedSeq) {
+            m_droppedCount += static_cast<uint8_t>(m_rxPacket.seq - expectedSeq);
+          }
+          m_lastRxSeq = m_rxPacket.seq;
+          m_rxCount++;
+          packetFound = true;
         }
-        m_lastRxSeq = m_rxPacket.seq;
-        m_rxCount++;
-        packetFound = true;
       }
     }
   }
-  m_jetsonConnected = packetFound;
 
-  // Liveness timeout: if no valid packet for kJetsonTimeoutSec, mark disconnected.
-  // This allows the 500ms drivetrain watchdog in RobotPeriodic() to fire on USB loss.
-  if (m_jetsonConnected && m_lastRxTimer.Get().value() > kJetsonTimeoutSec) {
-    m_jetsonConnected = false;
+  if (packetFound) {
+    m_lastRxTimer.Reset();
+    m_lastRxTimer.Start();
   }
+
+  // Connection liveness is timer-based, not single-tick packet presence.
+  // This avoids false disconnect flicker from periodic/UDP phase drift.
+  m_jetsonConnected =
+      (m_rxCount > 0U) && (m_lastRxTimer.Get().value() <= kJetsonTimeoutSec);
 
   frc::SmartDashboard::PutBoolean("Bridge/JetsonConnected", m_jetsonConnected);
   frc::SmartDashboard::PutNumber("Bridge/TxSeq", m_txSeq);
