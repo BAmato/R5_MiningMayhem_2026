@@ -111,23 +111,35 @@ void SerialBridgeSubsystem::Periodic() {
          sizeof(m_jetsonAddr));
   // sendto failure silently ignored — Jetson unreachable is not fatal
 
+  // RX: drain all queued datagrams and keep the most recent valid packet.
+  // This avoids consuming stale commands if the Jetson briefly runs faster
+  // than this loop.
   uint8_t rxBuf[sizeof(JetsonToRioPacket)];
-  ssize_t received = recvfrom(m_rxSock, rxBuf, sizeof(rxBuf), 0, nullptr, nullptr);
-
-  if (received == static_cast<ssize_t>(sizeof(JetsonToRioPacket))) {
-    if (rxBuf[0] == kMagicJetsonToRio[0] && rxBuf[1] == kMagicJetsonToRio[1]) {
-      uint8_t expectedCrc = ComputeCRC8(rxBuf, sizeof(JetsonToRioPacket) - 1);
-      if (rxBuf[sizeof(JetsonToRioPacket) - 1] == expectedCrc) {
-        std::memcpy(&m_rxPacket, rxBuf, sizeof(JetsonToRioPacket));
-        uint8_t expectedSeq = static_cast<uint8_t>(m_lastRxSeq + 1);
-        if (m_rxCount > 0 && m_rxPacket.seq != expectedSeq) {
-          m_droppedCount += static_cast<uint8_t>(m_rxPacket.seq - expectedSeq);
-        }
-        m_lastRxSeq = m_rxPacket.seq;
-        m_rxCount++;
-        m_lastRxTimer.Restart();
-      }
+  while (true) {
+    ssize_t received = recvfrom(m_rxSock, rxBuf, sizeof(rxBuf), 0, nullptr, nullptr);
+    if (received < 0) {
+      break;  // non-blocking socket: no more data this cycle
     }
+    if (received != static_cast<ssize_t>(sizeof(JetsonToRioPacket))) {
+      continue;
+    }
+    if (rxBuf[0] != kMagicJetsonToRio[0] || rxBuf[1] != kMagicJetsonToRio[1]) {
+      continue;
+    }
+
+    uint8_t expectedCrc = ComputeCRC8(rxBuf, sizeof(JetsonToRioPacket) - 1);
+    if (rxBuf[sizeof(JetsonToRioPacket) - 1] != expectedCrc) {
+      continue;
+    }
+
+    std::memcpy(&m_rxPacket, rxBuf, sizeof(JetsonToRioPacket));
+    uint8_t expectedSeq = static_cast<uint8_t>(m_lastRxSeq + 1);
+    if (m_rxCount > 0 && m_rxPacket.seq != expectedSeq) {
+      m_droppedCount += static_cast<uint8_t>(m_rxPacket.seq - expectedSeq);
+    }
+    m_lastRxSeq = m_rxPacket.seq;
+    m_rxCount++;
+    m_lastRxTimer.Restart();
   }
 
   // Liveness timeout: if no valid packet for kJetsonTimeoutSec, mark disconnected.
