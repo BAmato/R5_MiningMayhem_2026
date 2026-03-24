@@ -130,13 +130,16 @@ void SerialBridgeSubsystem::Periodic() {
       }
     }
   }
-  m_jetsonConnected = packetFound;
 
-  // Liveness timeout: if no valid packet for kJetsonTimeoutSec, mark disconnected.
-  // This allows the 500ms drivetrain watchdog in RobotPeriodic() to fire on USB loss.
-  if (m_jetsonConnected && m_lastRxTimer.Get().value() > kJetsonTimeoutSec) {
-    m_jetsonConnected = false;
+  if (packetFound) {
+    m_lastRxTimer.Reset();
+    m_lastRxTimer.Start();
   }
+
+  // Connection liveness is timer-based, not single-tick packet presence.
+  // This avoids false disconnect flicker from periodic/UDP phase drift.
+  m_jetsonConnected =
+      (m_rxCount > 0U) && (m_lastRxTimer.Get().value() <= kJetsonTimeoutSec);
 
   frc::SmartDashboard::PutBoolean("Bridge/JetsonConnected", m_jetsonConnected);
   frc::SmartDashboard::PutNumber("Bridge/TxSeq", m_txSeq);
