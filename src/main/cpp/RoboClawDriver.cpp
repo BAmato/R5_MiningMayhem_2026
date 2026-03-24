@@ -216,7 +216,25 @@ bool RoboClawDriver::WriteCommand(const uint8_t* packet, size_t length) {
     return false;
   }
 
-  return true;
+  uint8_t ack = 0;
+  const auto deadline =
+      frc::Timer::GetFPGATimestamp() + units::millisecond_t{kReadTimeoutMs};
+  while (frc::Timer::GetFPGATimestamp() < deadline) {
+    if (m_serial.GetBytesReceived() > 0) {
+      const int got = m_serial.Read(reinterpret_cast<char*>(&ack), 1);
+      if (got == 1) {
+        if (ack == kAck) {
+          return true;
+        }
+        ++m_errorCount;
+        return false;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::microseconds(100));
+  }
+
+  ++m_errorCount;
+  return false;
 }
 
 bool RoboClawDriver::ReadCommand(const uint8_t* header, size_t headerLen,
