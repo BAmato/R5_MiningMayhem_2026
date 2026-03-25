@@ -8,6 +8,13 @@
 #include <frc/Timer.h>
 #include <units/time.h>
 
+static void PackUint32BE(uint8_t* dest, uint32_t value) {
+  dest[0] = static_cast<uint8_t>((value >> 24) & 0xFF);
+  dest[1] = static_cast<uint8_t>((value >> 16) & 0xFF);
+  dest[2] = static_cast<uint8_t>((value >> 8) & 0xFF);
+  dest[3] = static_cast<uint8_t>(value & 0xFF);
+}
+
 RoboClawDriver::RoboClawDriver(frc::SerialPort::Port port, int baudRate)
     : m_serial(baudRate, port, 8,
                frc::SerialPort::Parity::kParity_None,
@@ -54,6 +61,54 @@ bool RoboClawDriver::SetM1M2Speed(uint8_t address, int32_t speedM1,
   const uint16_t crc = CRC16(packet, 10);
   packet[10] = static_cast<uint8_t>(crc >> 8);
   packet[11] = static_cast<uint8_t>(crc & 0xFF);
+  return WriteCommand(packet, std::size(packet));
+}
+
+bool RoboClawDriver::SetM1VelocityPID(uint8_t address, float kp, float ki,
+                                      float kd, uint32_t qpps) {
+  std::scoped_lock lock(m_mutex);
+
+  const uint32_t kdWire = static_cast<uint32_t>(kd * 65536.0f);
+  const uint32_t kpWire = static_cast<uint32_t>(kp * 65536.0f);
+  const uint32_t kiWire = static_cast<uint32_t>(ki * 65536.0f);
+
+  uint8_t packet[20] = {address, kCmdSetM1VelPID};
+  PackUint32BE(&packet[2], kdWire);
+  PackUint32BE(&packet[6], kpWire);
+  PackUint32BE(&packet[10], kiWire);
+  PackUint32BE(&packet[14], qpps);
+  const uint16_t crc = CRC16(packet, 18);
+  packet[18] = static_cast<uint8_t>(crc >> 8);
+  packet[19] = static_cast<uint8_t>(crc & 0xFF);
+  return WriteCommand(packet, std::size(packet));
+}
+
+bool RoboClawDriver::SetM2VelocityPID(uint8_t address, float kp, float ki,
+                                      float kd, uint32_t qpps) {
+  std::scoped_lock lock(m_mutex);
+
+  const uint32_t kdWire = static_cast<uint32_t>(kd * 65536.0f);
+  const uint32_t kpWire = static_cast<uint32_t>(kp * 65536.0f);
+  const uint32_t kiWire = static_cast<uint32_t>(ki * 65536.0f);
+
+  uint8_t packet[20] = {address, kCmdSetM2VelPID};
+  PackUint32BE(&packet[2], kdWire);
+  PackUint32BE(&packet[6], kpWire);
+  PackUint32BE(&packet[10], kiWire);
+  PackUint32BE(&packet[14], qpps);
+  const uint16_t crc = CRC16(packet, 18);
+  packet[18] = static_cast<uint8_t>(crc >> 8);
+  packet[19] = static_cast<uint8_t>(crc & 0xFF);
+  return WriteCommand(packet, std::size(packet));
+}
+
+bool RoboClawDriver::WriteNVM(uint8_t address) {
+  std::scoped_lock lock(m_mutex);
+
+  uint8_t packet[4] = {address, kCmdWriteNVM};
+  const uint16_t crc = CRC16(packet, 2);
+  packet[2] = static_cast<uint8_t>(crc >> 8);
+  packet[3] = static_cast<uint8_t>(crc & 0xFF);
   return WriteCommand(packet, std::size(packet));
 }
 

@@ -2,11 +2,24 @@
 
 #include <cmath>
 
+#include <frc/Timer.h>
 #include <frc/smartdashboard/SmartDashboard.h>
+#include <units/time.h>
 
 Drivetrain::Drivetrain() {
   SetName("Drivetrain");
   SetSubsystem("Drivetrain");
+
+  // Program velocity PID into RoboClaw RAM, then commit to flash (NVM).
+  m_roboclaw.SetM1VelocityPID(kAddrVertical, 29.20736f, 0.92726f, 0.0f, 1650);
+  m_roboclaw.SetM2VelocityPID(kAddrVertical, 33.88054f, 1.12312f, 0.0f, 1320);
+  m_roboclaw.WriteNVM(kAddrVertical);
+
+  m_roboclaw.SetM1VelocityPID(kAddrHorizontal, 20.0f, 0.8f, 0.0f, 2600);
+  m_roboclaw.WriteNVM(kAddrHorizontal);
+
+  frc::Wait(units::millisecond_t{1200});
+  frc::SmartDashboard::PutBoolean("RoboClaw/PIDLoaded", true);
 
   ResetDriveEncoders();
 }
