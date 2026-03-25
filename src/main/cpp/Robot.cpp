@@ -34,10 +34,10 @@ void Robot::RobotInit() {
   m_imu.Write(0x1C, 0x00);  // ACCEL_CONFIG: +/-2g (16384 LSB/g)
   frc::Wait(50_ms);         // allow oscillator to stabilize
 
-  const bool roboClawOk = m_container->m_drivetrain.VerifyControllers();
-  frc::SmartDashboard::PutBoolean("RoboClaw/OK", roboClawOk);
+  m_roboClawOk = m_container->m_drivetrain.VerifyControllers();
+  frc::SmartDashboard::PutBoolean("RoboClaw/OK", m_roboClawOk);
   frc::SmartDashboard::PutString("RoboClaw/Status",
-                                 roboClawOk ? "OK" : "MISSING - check MXP wiring and Motion Studio config");
+                                 m_roboClawOk ? "OK" : "MISSING - check MXP wiring and Motion Studio config");
 
   // Publish firmware version strings at startup for version verification.
   // These persist on SmartDashboard until the next deploy.
@@ -48,6 +48,11 @@ void Robot::RobotInit() {
       vertFw.value_or("NO RESPONSE"));
   frc::SmartDashboard::PutString("RoboClaw/Firmware_0x81",
       horizFw.value_or("NO RESPONSE"));
+
+  m_cmdVelWatchdog.Reset();
+  m_cmdVelWatchdog.Start();
+  m_container->m_drivetrain.SetDriveOutputsEnabled(false);
+  m_container->m_drivetrain.StopDrive();
 }
 
 /**
@@ -90,11 +95,20 @@ void Robot::RobotPeriodic() {
       static_cast<uint16_t>(m_matchTimeRemaining * 1000.0));
 
   // --- Apply Jetson commands ---
-  bool shouldDrive = m_container->m_bridge.IsJetsonConnected() &&
-                     (frc::DriverStation::IsAutonomousEnabled() ||
-                      m_container->m_bridge.GetSoftwareEnable());
+  const bool jetsonConnected = m_container->m_bridge.IsJetsonConnected();
+  const bool softwareEnable = m_container->m_bridge.GetSoftwareEnable();
+  const bool shouldDrive = jetsonConnected &&
+                           (frc::DriverStation::IsAutonomousEnabled() ||
+                            softwareEnable);
+
+  const bool driveOutputsEnabled = shouldDrive;
+  if (!driveOutputsEnabled && m_container->m_drivetrain.GetDriveOutputsEnabled()) {
+    m_container->m_drivetrain.StopDrive();
+  }
+  m_container->m_drivetrain.SetDriveOutputsEnabled(driveOutputsEnabled);
 
   if (shouldDrive) {
+    m_seenArmedCommand = true;
     m_container->m_drivetrain.Drive(m_container->m_bridge.GetCmdVx(),
                                     m_container->m_bridge.GetCmdVy(),
                                     m_container->m_bridge.GetCmdOmega());
@@ -102,10 +116,17 @@ void Robot::RobotPeriodic() {
     m_container->m_containerArm.Set(m_container->m_bridge.GetContainerArmPos());
     m_container->m_sortGate.Set(m_container->m_bridge.GetSortGatePos());
     m_cmdVelWatchdog.Reset();
-    m_cmdVelWatchdog.Start();
-  } else if (m_cmdVelWatchdog.Get() > 0.5_s) {
+  } else {
     m_container->m_drivetrain.StopDrive();
   }
+
+  frc::SmartDashboard::PutBoolean("Control/JetsonConnected", jetsonConnected);
+  frc::SmartDashboard::PutBoolean("Control/SoftwareEnable", softwareEnable);
+  frc::SmartDashboard::PutBoolean("Control/ShouldDrive", shouldDrive);
+  frc::SmartDashboard::PutBoolean("Control/DriveOutputsEnabled",
+      m_container->m_drivetrain.GetDriveOutputsEnabled());
+  frc::SmartDashboard::PutBoolean("Control/StartupInhibit", !m_seenArmedCommand);
+  frc::SmartDashboard::PutBoolean("RoboClaw/OK", m_roboClawOk);
 
   if (++dashboardCounter >= 5) {
     dashboardCounter = 0;

@@ -65,7 +65,7 @@ void Drivetrain::Periodic() {
   m_odomY += dForward * std::sin(m_odomTheta) + dHorizM * std::cos(m_odomTheta);
 
   double correctedOmega = m_cmdOmega;
-  if (std::abs(m_cmdOmega) < kOmegaDeadband) {
+  if (m_headingHoldActive && std::abs(m_cmdOmega) < kOmegaDeadband) {
     const double headingError = WrapAngleRadians(m_headingHoldTarget - m_odomTheta);
     const double correction = Clamp(headingError * kHeadingHoldKP,
                                     -kMaxHeadingCorrection,
@@ -83,8 +83,10 @@ void Drivetrain::Periodic() {
   const int32_t rightQpps = MetersPerSecondToCountsPerSecond(vertRight, kVertCountsPerM);
   const int32_t horizQpps = MetersPerSecondToCountsPerSecond(horiz, kHorizCountsPerM);
 
-  m_roboclaw.SetM1M2Speed(kAddrVertical, leftQpps, rightQpps);
-  m_roboclaw.SetM1Speed(kAddrHorizontal, horizQpps);
+  if (m_driveOutputsEnabled) {
+    m_roboclaw.SetM1M2Speed(kAddrVertical, leftQpps, rightQpps);
+    m_roboclaw.SetM1Speed(kAddrHorizontal, horizQpps);
+  }
 
   if (++dashboardCounter >= 5) {
     dashboardCounter = 0;
@@ -117,6 +119,8 @@ void Drivetrain::Periodic() {
     frc::SmartDashboard::PutNumber("Drive/QPPS_Horiz",
         static_cast<double>(static_cast<int32_t>(std::lround(
             m_cmdVy * kHorizCountsPerM))));
+    frc::SmartDashboard::PutBoolean("Control/DriveOutputsEnabled",
+                                    m_driveOutputsEnabled);
 
     // --- Heading hold diagnostics ---
     frc::SmartDashboard::PutNumber("Drive/HeadingHoldTarget_deg",
@@ -156,14 +160,32 @@ void Drivetrain::DriveArcade(double xSpeed, double zRotation) {
 
 void Drivetrain::StopDrive() {
   Drive(0.0, 0.0, 0.0);
-  m_roboclaw.SetM1M2Speed(kAddrVertical, 0, 0);
-  m_roboclaw.SetM1Speed(kAddrHorizontal, 0);
+  if (m_driveOutputsEnabled) {
+    m_roboclaw.SetM1M2Speed(kAddrVertical, 0, 0);
+    m_roboclaw.SetM1Speed(kAddrHorizontal, 0);
+  }
+}
+
+void Drivetrain::SetDriveOutputsEnabled(bool enabled) {
+  m_driveOutputsEnabled = enabled;
+}
+
+bool Drivetrain::GetDriveOutputsEnabled() const {
+  return m_driveOutputsEnabled;
 }
 
 void Drivetrain::Drive(double vx, double vy, double omega) {
   m_cmdVx = vx;
   m_cmdVy = vy;
   m_cmdOmega = omega;
+  constexpr double kCommandActivationEpsilon = 1e-3;
+  if (!m_headingHoldActive &&
+      (std::abs(vx) > kCommandActivationEpsilon ||
+       std::abs(vy) > kCommandActivationEpsilon ||
+       std::abs(omega) > kCommandActivationEpsilon)) {
+    m_headingHoldActive = true;
+    m_headingHoldTarget = m_odomTheta;
+  }
   if (std::abs(omega) >= kOmegaDeadband) {
     m_headingHoldTarget = m_odomTheta;
   }
