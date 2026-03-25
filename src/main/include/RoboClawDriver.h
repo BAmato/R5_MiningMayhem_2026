@@ -22,6 +22,11 @@ class RoboClawDriver {
   bool SetM1Speed(uint8_t address, int32_t speed);
   bool SetM2Speed(uint8_t address, int32_t speed);
   bool SetM1M2Speed(uint8_t address, int32_t speedM1, int32_t speedM2);
+  bool SetM1VelocityPID(uint8_t address, float kp, float ki, float kd,
+                        uint32_t qpps);
+  bool SetM2VelocityPID(uint8_t address, float kp, float ki, float kd,
+                        uint32_t qpps);
+  bool WriteNVM(uint8_t address);
 
   std::optional<EncoderResult> ReadM1Encoder(uint8_t address);
   std::optional<EncoderResult> ReadM2Encoder(uint8_t address);
@@ -56,4 +61,7 @@ class RoboClawDriver {
   static constexpr uint8_t kCmdSetM1Speed = 35;
   static constexpr uint8_t kCmdSetM2Speed = 36;
   static constexpr uint8_t kCmdSetM1M2Speed = 37;
+  static constexpr uint8_t kCmdSetM1VelPID = 28;
+  static constexpr uint8_t kCmdSetM2VelPID = 29;
+  static constexpr uint8_t kCmdWriteNVM = 94;
 };
