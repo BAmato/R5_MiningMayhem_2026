@@ -36,6 +36,8 @@ class Drivetrain : public frc2::SubsystemBase {
   double GetAverageDistanceMeters() const;
   void DriveArcade(double xSpeed, double zRotation);
   void StopDrive();
+  void SetDriveOutputsEnabled(bool enabled);
+  bool GetDriveOutputsEnabled() const;
 
   void Drive(double vx, double vy, double omega);
   void GetOdometry(double& x, double& y, double& theta) const;
@@ -76,4 +78,6 @@ class Drivetrain : public frc2::SubsystemBase {
   int32_t m_prevHorizEncoderCount{0};
   int m_encoderReadPhase{0};
   bool m_haveEncoderReference{false};
+  bool m_driveOutputsEnabled{false};
+  bool m_headingHoldActive{false};
 };

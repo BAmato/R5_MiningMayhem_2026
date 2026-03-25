@@ -42,6 +42,8 @@ class Robot : public frc::TimedRobot {
   frc::Timer m_cmdVelWatchdog;
   frc::Timer m_matchTimer;         // starts at AutonomousInit(); measures elapsed match time
   bool m_matchStarted{false};      // true once autonomous or teleop begins
+  bool m_roboClawOk{false};
+  bool m_seenArmedCommand{false};
   double m_matchTimeRemaining{180.0};  // seconds; diagnostic only
   void ReadIMU();
 };
