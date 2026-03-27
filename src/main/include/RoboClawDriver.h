@@ -13,6 +13,12 @@ class RoboClawDriver {
     int32_t count;
     uint8_t status;
   };
+  struct VelocityPidResult {
+    double kp;
+    double ki;
+    double kd;
+    uint32_t qpps;
+  };
 
   explicit RoboClawDriver(frc::SerialPort::Port port, int baudRate = 38400);
   ~RoboClawDriver() = default;
@@ -30,6 +36,8 @@ class RoboClawDriver {
 
   std::optional<EncoderResult> ReadM1Encoder(uint8_t address);
   std::optional<EncoderResult> ReadM2Encoder(uint8_t address);
+  std::optional<VelocityPidResult> ReadM1VelocityPID(uint8_t address);
+  std::optional<VelocityPidResult> ReadM2VelocityPID(uint8_t address);
   bool ResetEncoders(uint8_t address);
 
   std::optional<std::string> ReadFirmwareVersion(uint8_t address);
@@ -45,6 +53,7 @@ class RoboClawDriver {
   void FlushInput();
   static void PackInt32BE(uint8_t* dest, int32_t value);
   static int32_t UnpackInt32BE(const uint8_t* src);
+  static uint32_t UnpackUint32BE(const uint8_t* src);
   static uint16_t UnpackUint16BE(const uint8_t* src);
 
   frc::SerialPort m_serial;
@@ -63,5 +72,7 @@ class RoboClawDriver {
   static constexpr uint8_t kCmdSetM1M2Speed = 37;
   static constexpr uint8_t kCmdSetM1VelPID = 28;
   static constexpr uint8_t kCmdSetM2VelPID = 29;
+  static constexpr uint8_t kCmdReadM1VelPID = 55;
+  static constexpr uint8_t kCmdReadM2VelPID = 56;
   static constexpr uint8_t kCmdWriteNVM = 94;
 };
