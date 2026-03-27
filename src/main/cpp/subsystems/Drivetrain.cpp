@@ -3,9 +3,7 @@
 #include <cmath>
 
 #include <frc/DriverStation.h>
-#include <frc/Timer.h>
 #include <frc/smartdashboard/SmartDashboard.h>
-#include <units/time.h>
 
 namespace {
 constexpr Drivetrain::VelocityPidSetting kVerticalM1DefaultPid{
@@ -15,6 +13,9 @@ constexpr Drivetrain::VelocityPidSetting kVerticalM2DefaultPid{
 constexpr Drivetrain::VelocityPidSetting kHorizontalM1DefaultPid{
     .kp = 20.0, .ki = 0.8, .kd = 0.0, .qpps = 2600};
 constexpr double kPidMatchTolerance = 1e-4;
+constexpr const char* kPidController80M1 = "RoboClawPID/Controller_0x80/M1";
+constexpr const char* kPidController80M2 = "RoboClawPID/Controller_0x80/M2";
+constexpr const char* kPidController81M1 = "RoboClawPID/Controller_0x81/M1";
 }  // namespace
 
 Drivetrain::Drivetrain() {
@@ -31,38 +32,12 @@ Drivetrain::Drivetrain() {
   PublishPidPendingValues();
   PublishPidActualValues();
   UpdatePidMatchAndDirtyFlags();
-
-  const bool defaultsLoaded =
-      m_roboclaw.SetM1VelocityPID(kAddrVertical, static_cast<float>(m_verticalM1Config.kp),
-                                  static_cast<float>(m_verticalM1Config.ki),
-                                  static_cast<float>(m_verticalM1Config.kd),
-                                  m_verticalM1Config.qpps) &&
-      m_roboclaw.SetM2VelocityPID(kAddrVertical, static_cast<float>(m_verticalM2Config.kp),
-                                  static_cast<float>(m_verticalM2Config.ki),
-                                  static_cast<float>(m_verticalM2Config.kd),
-                                  m_verticalM2Config.qpps) &&
-      m_roboclaw.WriteNVM(kAddrVertical);
-  frc::Wait(units::millisecond_t{1300});
-
-  const bool horizontalLoaded =
-      m_roboclaw.SetM1VelocityPID(kAddrHorizontal, static_cast<float>(m_horizontalM1Config.kp),
-                                  static_cast<float>(m_horizontalM1Config.ki),
-                                  static_cast<float>(m_horizontalM1Config.kd),
-                                  m_horizontalM1Config.qpps) &&
-      m_roboclaw.WriteNVM(kAddrHorizontal);
-  frc::Wait(units::millisecond_t{1300});
-
-  const bool loadedAll = defaultsLoaded && horizontalLoaded;
-  frc::SmartDashboard::PutBoolean("RoboClaw/PIDLoaded", loadedAll);
-  if (!loadedAll) {
-    SetPidStatus("Boot load failed", "Failed writing configured defaults",
-                 false, false);
-  } else if (!m_autoRefreshOnBoot || !RefreshPidActualFromControllers()) {
-    SetPidStatus("Boot readback failed",
-                 "Failed to read one or more PID slots after boot load",
-                 false, false);
+  if (RefreshPidActualFromControllers()) {
+    SetPidStatus("Ready", "", true, false);
   } else {
-    SetPidStatus("Ready", "", true, true);
+    SetPidStatus("Boot readback failed",
+                 "Failed to read one or more PID slots at startup",
+                 false, false);
   }
 
   ResetDriveEncoders();
@@ -343,7 +318,10 @@ void Drivetrain::InitializePidDashboard() {
   frc::SmartDashboard::SetDefaultString("RoboClawPID/LastError", "");
   frc::SmartDashboard::SetDefaultBoolean("RoboClawPID/AutoRefreshOnBoot",
                                          m_autoRefreshOnBoot);
-  frc::SmartDashboard::SetDefaultString("RoboClawPID/Horizontal/M2/Status", "Unused");
+  frc::SmartDashboard::SetDefaultString("RoboClawPID/Controller_0x80/Role", "Vertical");
+  frc::SmartDashboard::SetDefaultString("RoboClawPID/Controller_0x81/Role", "Horizontal");
+  frc::SmartDashboard::SetDefaultString("RoboClawPID/Controller_0x81/M2/Status",
+                                        "Unused");
   frc::SmartDashboard::SetDefaultBoolean("RoboClawPID/RefreshActual", false);
   frc::SmartDashboard::SetDefaultBoolean("RoboClawPID/LoadPendingFromConfig", false);
   frc::SmartDashboard::SetDefaultBoolean("RoboClawPID/LoadPendingFromActual", false);
@@ -355,92 +333,83 @@ void Drivetrain::InitializePidDashboard() {
 }
 
 void Drivetrain::PublishPidConfigValues() const {
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Config/Kp", m_verticalM1Config.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Config/Ki", m_verticalM1Config.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Config/Kd", m_verticalM1Config.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Config/QPPS", m_verticalM1Config.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Config/Kp", m_verticalM1Config.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Config/Ki", m_verticalM1Config.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Config/Kd", m_verticalM1Config.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Config/QPPS", m_verticalM1Config.qpps);
 
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Config/Kp", m_verticalM2Config.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Config/Ki", m_verticalM2Config.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Config/Kd", m_verticalM2Config.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Config/QPPS", m_verticalM2Config.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Config/Kp", m_verticalM2Config.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Config/Ki", m_verticalM2Config.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Config/Kd", m_verticalM2Config.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Config/QPPS", m_verticalM2Config.qpps);
 
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Config/Kp",
-                                 m_horizontalM1Config.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Config/Ki",
-                                 m_horizontalM1Config.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Config/Kd",
-                                 m_horizontalM1Config.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Config/QPPS",
-                                 m_horizontalM1Config.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Config/Kp", m_horizontalM1Config.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Config/Ki", m_horizontalM1Config.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Config/Kd", m_horizontalM1Config.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Config/QPPS", m_horizontalM1Config.qpps);
 }
 
 void Drivetrain::PublishPidPendingValues() const {
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Pending/Kp", m_verticalM1Pending.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Pending/Ki", m_verticalM1Pending.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Pending/Kd", m_verticalM1Pending.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Pending/QPPS", m_verticalM1Pending.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Pending/Kp", m_verticalM1Pending.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Pending/Ki", m_verticalM1Pending.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Pending/Kd", m_verticalM1Pending.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Pending/QPPS", m_verticalM1Pending.qpps);
 
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Pending/Kp", m_verticalM2Pending.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Pending/Ki", m_verticalM2Pending.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Pending/Kd", m_verticalM2Pending.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Pending/QPPS", m_verticalM2Pending.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Pending/Kp", m_verticalM2Pending.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Pending/Ki", m_verticalM2Pending.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Pending/Kd", m_verticalM2Pending.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Pending/QPPS", m_verticalM2Pending.qpps);
 
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Pending/Kp",
-                                 m_horizontalM1Pending.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Pending/Ki",
-                                 m_horizontalM1Pending.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Pending/Kd",
-                                 m_horizontalM1Pending.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Pending/QPPS",
-                                 m_horizontalM1Pending.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Pending/Kp", m_horizontalM1Pending.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Pending/Ki", m_horizontalM1Pending.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Pending/Kd", m_horizontalM1Pending.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Pending/QPPS", m_horizontalM1Pending.qpps);
 }
 
 void Drivetrain::PublishPidActualValues() const {
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Actual/Kp", m_verticalM1Actual.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Actual/Ki", m_verticalM1Actual.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Actual/Kd", m_verticalM1Actual.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M1/Actual/QPPS", m_verticalM1Actual.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Actual/Kp", m_verticalM1Actual.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Actual/Ki", m_verticalM1Actual.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Actual/Kd", m_verticalM1Actual.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M1} + "/Actual/QPPS", m_verticalM1Actual.qpps);
 
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Actual/Kp", m_verticalM2Actual.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Actual/Ki", m_verticalM2Actual.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Actual/Kd", m_verticalM2Actual.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Vertical/M2/Actual/QPPS", m_verticalM2Actual.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Actual/Kp", m_verticalM2Actual.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Actual/Ki", m_verticalM2Actual.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Actual/Kd", m_verticalM2Actual.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController80M2} + "/Actual/QPPS", m_verticalM2Actual.qpps);
 
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Actual/Kp", m_horizontalM1Actual.kp);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Actual/Ki", m_horizontalM1Actual.ki);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Actual/Kd", m_horizontalM1Actual.kd);
-  frc::SmartDashboard::PutNumber("RoboClawPID/Horizontal/M1/Actual/QPPS",
-                                 m_horizontalM1Actual.qpps);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Actual/Kp", m_horizontalM1Actual.kp);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Actual/Ki", m_horizontalM1Actual.ki);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Actual/Kd", m_horizontalM1Actual.kd);
+  frc::SmartDashboard::PutNumber(std::string{kPidController81M1} + "/Actual/QPPS", m_horizontalM1Actual.qpps);
 }
 
 void Drivetrain::ReadPidPendingValuesFromDashboard() {
   m_verticalM1Pending.kp = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M1/Pending/Kp", m_verticalM1Pending.kp);
+      std::string{kPidController80M1} + "/Pending/Kp", m_verticalM1Pending.kp);
   m_verticalM1Pending.ki = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M1/Pending/Ki", m_verticalM1Pending.ki);
+      std::string{kPidController80M1} + "/Pending/Ki", m_verticalM1Pending.ki);
   m_verticalM1Pending.kd = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M1/Pending/Kd", m_verticalM1Pending.kd);
+      std::string{kPidController80M1} + "/Pending/Kd", m_verticalM1Pending.kd);
   m_verticalM1Pending.qpps = static_cast<uint32_t>(std::lround(frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M1/Pending/QPPS", static_cast<double>(m_verticalM1Pending.qpps))));
+      std::string{kPidController80M1} + "/Pending/QPPS", static_cast<double>(m_verticalM1Pending.qpps))));
 
   m_verticalM2Pending.kp = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M2/Pending/Kp", m_verticalM2Pending.kp);
+      std::string{kPidController80M2} + "/Pending/Kp", m_verticalM2Pending.kp);
   m_verticalM2Pending.ki = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M2/Pending/Ki", m_verticalM2Pending.ki);
+      std::string{kPidController80M2} + "/Pending/Ki", m_verticalM2Pending.ki);
   m_verticalM2Pending.kd = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M2/Pending/Kd", m_verticalM2Pending.kd);
+      std::string{kPidController80M2} + "/Pending/Kd", m_verticalM2Pending.kd);
   m_verticalM2Pending.qpps = static_cast<uint32_t>(std::lround(frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Vertical/M2/Pending/QPPS", static_cast<double>(m_verticalM2Pending.qpps))));
+      std::string{kPidController80M2} + "/Pending/QPPS", static_cast<double>(m_verticalM2Pending.qpps))));
 
   m_horizontalM1Pending.kp = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Horizontal/M1/Pending/Kp", m_horizontalM1Pending.kp);
+      std::string{kPidController81M1} + "/Pending/Kp", m_horizontalM1Pending.kp);
   m_horizontalM1Pending.ki = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Horizontal/M1/Pending/Ki", m_horizontalM1Pending.ki);
+      std::string{kPidController81M1} + "/Pending/Ki", m_horizontalM1Pending.ki);
   m_horizontalM1Pending.kd = frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Horizontal/M1/Pending/Kd", m_horizontalM1Pending.kd);
+      std::string{kPidController81M1} + "/Pending/Kd", m_horizontalM1Pending.kd);
   m_horizontalM1Pending.qpps = static_cast<uint32_t>(std::lround(frc::SmartDashboard::GetNumber(
-      "RoboClawPID/Horizontal/M1/Pending/QPPS",
+      std::string{kPidController81M1} + "/Pending/QPPS",
       static_cast<double>(m_horizontalM1Pending.qpps))));
 }
 
@@ -529,7 +498,6 @@ bool Drivetrain::ApplyPidPendingToControllers(bool writeNvm) {
                    m_pidLastReadOk, false);
       return false;
     }
-    frc::Wait(units::millisecond_t{1300});
   }
 
   const bool readbackOk = RefreshPidActualFromControllers();
@@ -596,7 +564,6 @@ void Drivetrain::HandlePidDashboardActions() {
     const bool writeOk = m_roboclaw.WriteNVM(kAddrVertical) &&
                          m_roboclaw.WriteNVM(kAddrHorizontal);
     if (writeOk) {
-      frc::Wait(units::millisecond_t{1300});
       const bool refreshed = RefreshPidActualFromControllers();
       SetPidStatus(refreshed ? "NVM write complete" : "NVM write complete; readback failed",
                    refreshed ? "" : "WriteNVM succeeded but readback failed",
@@ -615,9 +582,9 @@ void Drivetrain::UpdatePidMatchAndDirtyFlags() {
   const bool v1Matches = m_hasActualPidValues && PidMatches(m_verticalM1Actual, m_verticalM1Config);
   const bool v2Matches = m_hasActualPidValues && PidMatches(m_verticalM2Actual, m_verticalM2Config);
   const bool h1Matches = m_hasActualPidValues && PidMatches(m_horizontalM1Actual, m_horizontalM1Config);
-  frc::SmartDashboard::PutBoolean("RoboClawPID/Vertical/M1/MatchesConfig", v1Matches);
-  frc::SmartDashboard::PutBoolean("RoboClawPID/Vertical/M2/MatchesConfig", v2Matches);
-  frc::SmartDashboard::PutBoolean("RoboClawPID/Horizontal/M1/MatchesConfig", h1Matches);
+  frc::SmartDashboard::PutBoolean(std::string{kPidController80M1} + "/MatchesConfig", v1Matches);
+  frc::SmartDashboard::PutBoolean(std::string{kPidController80M2} + "/MatchesConfig", v2Matches);
+  frc::SmartDashboard::PutBoolean(std::string{kPidController81M1} + "/MatchesConfig", h1Matches);
 
   const bool dirty =
       !PidMatches(m_verticalM1Pending, m_verticalM1Actual) ||
@@ -630,6 +597,7 @@ void Drivetrain::SetPidStatus(const std::string& status, const std::string& last
                               bool lastReadOk, bool lastApplyOk) {
   m_pidLastReadOk = lastReadOk;
   m_pidLastApplyOk = lastApplyOk;
+  frc::SmartDashboard::PutBoolean("RoboClaw/PIDLoaded", m_pidLastReadOk || m_pidLastApplyOk);
   frc::SmartDashboard::PutString("RoboClawPID/Status", status);
   frc::SmartDashboard::PutBoolean("RoboClawPID/LastReadOk", m_pidLastReadOk);
   frc::SmartDashboard::PutBoolean("RoboClawPID/LastApplyOk", m_pidLastApplyOk);

@@ -105,11 +105,23 @@ bool RoboClawDriver::SetM2VelocityPID(uint8_t address, float kp, float ki,
 bool RoboClawDriver::WriteNVM(uint8_t address) {
   std::scoped_lock lock(m_mutex);
 
-  uint8_t packet[4] = {address, kCmdWriteNVM};
-  const uint16_t crc = CRC16(packet, 2);
-  packet[2] = static_cast<uint8_t>(crc >> 8);
-  packet[3] = static_cast<uint8_t>(crc & 0xFF);
-  return WriteCommand(packet, std::size(packet));
+  constexpr uint32_t kWriteNvmKey = 0xE22EAB7A;
+  uint8_t packet[8] = {address, kCmdWriteNVM};
+  PackUint32BE(&packet[2], kWriteNvmKey);
+  const uint16_t crc = CRC16(packet, 6);
+  packet[6] = static_cast<uint8_t>(crc >> 8);
+  packet[7] = static_cast<uint8_t>(crc & 0xFF);
+
+  const bool writeOk = WriteCommand(packet, std::size(packet));
+  if (!writeOk) {
+    return false;
+  }
+
+  // RoboClaw resets after a successful NVM write. Give it time to reboot
+  // before any follow-up command.
+  std::this_thread::sleep_for(std::chrono::milliseconds(1300));
+  FlushInput();
+  return true;
 }
 
 std::optional<RoboClawDriver::EncoderResult> RoboClawDriver::ReadM1Encoder(
