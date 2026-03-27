@@ -32,6 +32,15 @@ class Robot : public frc::TimedRobot {
   void TestPeriodic() override;
 
  private:
+  enum class DriveTestMode {
+    kNone,
+    kForward,
+    kBackward,
+    kTurnLeft90,
+    kTurnRight90,
+    kTurn180
+  };
+
   // Have it null by default so that if testing teleop it
   // doesn't have undefined behavior and potentially crash.
   frc2::Command* m_autonomousCommand = nullptr;
@@ -45,5 +54,40 @@ class Robot : public frc::TimedRobot {
   bool m_roboClawOk{false};
   bool m_seenArmedCommand{false};
   double m_matchTimeRemaining{180.0};  // seconds; diagnostic only
+
+  // Glass / SmartDashboard drivetrain test state
+  DriveTestMode m_driveTestMode{DriveTestMode::kNone};
+  bool m_driveTestActive{false};
+  bool m_driveTestCompleted{false};
+  bool m_driveTestTimedOut{false};
+  double m_driveTestStartX{0.0};
+  double m_driveTestStartY{0.0};
+  double m_driveTestStartTheta{0.0};
+  double m_driveTestTargetDistance{0.0};
+  double m_driveTestTargetAngle{0.0};
+  double m_driveTestProgress{0.0};
+  double m_driveTestPositionError{0.0};
+  double m_driveTestAngleError{0.0};
+  double m_driveTestCmdVx{0.0};
+  double m_driveTestCmdOmega{0.0};
+  frc::Timer m_driveTestTimer;
+
+  bool m_prevStartForward{false};
+  bool m_prevStartBackward{false};
+  bool m_prevStartTurnLeft90{false};
+  bool m_prevStartTurnRight90{false};
+  bool m_prevStartTurn180{false};
+  bool m_prevCancel{false};
+  bool m_prevResetOdometry{false};
+
+  static double Clamp(double value, double minValue, double maxValue);
+  static double WrapAngleRadians(double angle);
+  static const char* DriveTestModeToString(DriveTestMode mode);
+  void InitializeDriveTestDashboard();
+  void ResetDriveTestState(const char* status);
+  void StartDriveTest(DriveTestMode mode, double targetDistance, double targetAngle);
+  void UpdateDriveTest();
+  bool ConsumeDashboardButtonEdge(const char* key, bool& previousState);
+  void PublishDriveTestTelemetry(const char* status) const;
   void ReadIMU();
 };

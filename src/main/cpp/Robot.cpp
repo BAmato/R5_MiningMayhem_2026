@@ -38,6 +38,8 @@ void Robot::RobotInit() {
   m_cmdVelWatchdog.Start();
   m_container->m_drivetrain.SetDriveOutputsEnabled(false);
   m_container->m_drivetrain.StopDrive();
+  InitializeDriveTestDashboard();
+  PublishDriveTestTelemetry("Idle");
 }
 
 /**
@@ -79,35 +81,50 @@ void Robot::RobotPeriodic() {
   m_container->m_bridge.SetMatchTimeMs(
       static_cast<uint16_t>(m_matchTimeRemaining * 1000.0));
 
+  // --- Drive ownership: manual Glass tests or Jetson bridge ---
+  const bool driveTestEnabled = frc::SmartDashboard::GetBoolean("DriveTest/Enable", false);
+  const bool manualOwnsDrive = driveTestEnabled;
+  if (manualOwnsDrive) {
+    UpdateDriveTest();
+  } else if (m_driveTestActive || m_driveTestMode != DriveTestMode::kNone) {
+    m_container->m_drivetrain.StopDrive();
+    m_container->m_drivetrain.SetDriveOutputsEnabled(false);
+    ResetDriveTestState("Disabled");
+  }
+
   // --- Apply Jetson commands ---
   const bool jetsonConnected = m_container->m_bridge.IsJetsonConnected();
   const bool softwareEnable = m_container->m_bridge.GetSoftwareEnable();
-  const bool shouldDrive = jetsonConnected &&
+  const bool shouldDriveJetson = jetsonConnected &&
                            (frc::DriverStation::IsAutonomousEnabled() ||
                             softwareEnable);
+  const bool shouldDrive = !manualOwnsDrive && shouldDriveJetson;
 
-  const bool driveOutputsEnabled = shouldDrive;
-  if (!driveOutputsEnabled && m_container->m_drivetrain.GetDriveOutputsEnabled()) {
-    m_container->m_drivetrain.StopDrive();
-  }
-  m_container->m_drivetrain.SetDriveOutputsEnabled(driveOutputsEnabled);
+  if (!manualOwnsDrive) {
+    const bool driveOutputsEnabled = shouldDrive;
+    if (!driveOutputsEnabled && m_container->m_drivetrain.GetDriveOutputsEnabled()) {
+      m_container->m_drivetrain.StopDrive();
+    }
+    m_container->m_drivetrain.SetDriveOutputsEnabled(driveOutputsEnabled);
 
-  if (shouldDrive) {
-    m_seenArmedCommand = true;
-    m_container->m_drivetrain.Drive(m_container->m_bridge.GetCmdVx(),
-                                    m_container->m_bridge.GetCmdVy(),
-                                    m_container->m_bridge.GetCmdOmega());
-    m_container->m_beaconArm.Set(m_container->m_bridge.GetBeaconArmPos());
-    m_container->m_containerArm.Set(m_container->m_bridge.GetContainerArmPos());
-    m_container->m_sortGate.Set(m_container->m_bridge.GetSortGatePos());
-    m_cmdVelWatchdog.Reset();
-  } else {
-    m_container->m_drivetrain.StopDrive();
+    if (shouldDrive) {
+      m_seenArmedCommand = true;
+      m_container->m_drivetrain.Drive(m_container->m_bridge.GetCmdVx(),
+                                      m_container->m_bridge.GetCmdVy(),
+                                      m_container->m_bridge.GetCmdOmega());
+      m_container->m_beaconArm.Set(m_container->m_bridge.GetBeaconArmPos());
+      m_container->m_containerArm.Set(m_container->m_bridge.GetContainerArmPos());
+      m_container->m_sortGate.Set(m_container->m_bridge.GetSortGatePos());
+      m_cmdVelWatchdog.Reset();
+    } else {
+      m_container->m_drivetrain.StopDrive();
+    }
   }
 
   frc::SmartDashboard::PutBoolean("Control/JetsonConnected", jetsonConnected);
   frc::SmartDashboard::PutBoolean("Control/SoftwareEnable", softwareEnable);
-  frc::SmartDashboard::PutBoolean("Control/ShouldDrive", shouldDrive);
+  frc::SmartDashboard::PutBoolean("Control/ShouldDrive", shouldDriveJetson);
+  frc::SmartDashboard::PutBoolean("Control/ManualDriveOverride", manualOwnsDrive);
   frc::SmartDashboard::PutBoolean("Control/DriveOutputsEnabled",
       m_container->m_drivetrain.GetDriveOutputsEnabled());
   frc::SmartDashboard::PutBoolean("Control/StartupInhibit", !m_seenArmedCommand);
@@ -188,6 +205,248 @@ void Robot::ReadIMU() {
   // 131 LSB/(deg/s) at +/-250 deg/s range; convert to rad/s
   double yawRateRad = (gyroZRaw / 131.0) * (M_PI / 180.0);
   m_container->m_drivetrain.SetGyroYawRate(yawRateRad);
+}
+
+double Robot::Clamp(double value, double minValue, double maxValue) {
+  if (value < minValue) {
+    return minValue;
+  }
+  if (value > maxValue) {
+    return maxValue;
+  }
+  return value;
+}
+
+double Robot::WrapAngleRadians(double angle) {
+  constexpr double kTwoPi = 2.0 * M_PI;
+  while (angle > M_PI) {
+    angle -= kTwoPi;
+  }
+  while (angle < -M_PI) {
+    angle += kTwoPi;
+  }
+  return angle;
+}
+
+const char* Robot::DriveTestModeToString(DriveTestMode mode) {
+  switch (mode) {
+    case DriveTestMode::kForward: return "Forward";
+    case DriveTestMode::kBackward: return "Backward";
+    case DriveTestMode::kTurnLeft90: return "TurnLeft90";
+    case DriveTestMode::kTurnRight90: return "TurnRight90";
+    case DriveTestMode::kTurn180: return "Turn180";
+    case DriveTestMode::kNone:
+    default: return "Idle";
+  }
+}
+
+void Robot::InitializeDriveTestDashboard() {
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/Enable", false);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/DistanceMeters", 0.50);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/LinearSpeedMaxMps", 0.25);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/AngularSpeedMaxRadPerSec", 0.8);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/PositionKp", 1.2);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/AngleKp", 2.0);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/PositionToleranceM", 0.02);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/AngleToleranceDeg", 3.0);
+  frc::SmartDashboard::SetDefaultNumber("DriveTest/TimeoutSec", 4.0);
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/StartForward", false);
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/StartBackward", false);
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/StartTurnLeft90", false);
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/StartTurnRight90", false);
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/StartTurn180", false);
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/Cancel", false);
+  frc::SmartDashboard::SetDefaultBoolean("DriveTest/ResetOdometry", false);
+}
+
+void Robot::ResetDriveTestState(const char* status) {
+  m_driveTestMode = DriveTestMode::kNone;
+  m_driveTestActive = false;
+  m_driveTestTargetDistance = 0.0;
+  m_driveTestTargetAngle = 0.0;
+  m_driveTestProgress = 0.0;
+  m_driveTestPositionError = 0.0;
+  m_driveTestAngleError = 0.0;
+  m_driveTestCmdVx = 0.0;
+  m_driveTestCmdOmega = 0.0;
+  m_driveTestTimer.Stop();
+  PublishDriveTestTelemetry(status);
+}
+
+void Robot::StartDriveTest(DriveTestMode mode, double targetDistance, double targetAngle) {
+  m_driveTestMode = mode;
+  m_driveTestActive = true;
+  m_driveTestCompleted = false;
+  m_driveTestTimedOut = false;
+  m_container->m_drivetrain.GetOdometry(m_driveTestStartX, m_driveTestStartY,
+                                        m_driveTestStartTheta);
+  m_driveTestTargetDistance = targetDistance;
+  m_driveTestTargetAngle = targetAngle;
+  m_driveTestProgress = 0.0;
+  m_driveTestPositionError = targetDistance;
+  m_driveTestAngleError = targetAngle;
+  m_driveTestCmdVx = 0.0;
+  m_driveTestCmdOmega = 0.0;
+  m_driveTestTimer.Reset();
+  m_driveTestTimer.Start();
+}
+
+bool Robot::ConsumeDashboardButtonEdge(const char* key, bool& previousState) {
+  const bool currentState = frc::SmartDashboard::GetBoolean(key, false);
+  const bool risingEdge = currentState && !previousState;
+  previousState = currentState;
+  if (risingEdge) {
+    frc::SmartDashboard::PutBoolean(key, false);
+    previousState = false;
+  }
+  return risingEdge;
+}
+
+void Robot::UpdateDriveTest() {
+  constexpr double kDegPerRad = 180.0 / M_PI;
+  const double linearMax = std::abs(frc::SmartDashboard::GetNumber(
+      "DriveTest/LinearSpeedMaxMps", 0.25));
+  const double angularMax = std::abs(frc::SmartDashboard::GetNumber(
+      "DriveTest/AngularSpeedMaxRadPerSec", 0.8));
+  const double posKp = frc::SmartDashboard::GetNumber("DriveTest/PositionKp", 1.2);
+  const double angleKp = frc::SmartDashboard::GetNumber("DriveTest/AngleKp", 2.0);
+  const double posTol = std::abs(frc::SmartDashboard::GetNumber(
+      "DriveTest/PositionToleranceM", 0.02));
+  const double angleTolRad = std::abs(frc::SmartDashboard::GetNumber(
+      "DriveTest/AngleToleranceDeg", 3.0)) / kDegPerRad;
+  const double timeoutSec = std::max(0.1, frc::SmartDashboard::GetNumber(
+      "DriveTest/TimeoutSec", 4.0));
+  const double distanceMagnitude = std::abs(frc::SmartDashboard::GetNumber(
+      "DriveTest/DistanceMeters", 0.50));
+
+  const bool resetOdometry = ConsumeDashboardButtonEdge("DriveTest/ResetOdometry",
+      m_prevResetOdometry);
+  if (resetOdometry) {
+    m_container->m_drivetrain.StopDrive();
+    ResetDriveTestState("Odometry reset");
+    m_driveTestCompleted = false;
+    m_driveTestTimedOut = false;
+    m_container->m_drivetrain.ResetOdometry();
+    PublishDriveTestTelemetry("Odometry reset");
+    return;
+  }
+
+  const bool cancel = ConsumeDashboardButtonEdge("DriveTest/Cancel", m_prevCancel);
+  if (cancel) {
+    m_container->m_drivetrain.StopDrive();
+    m_container->m_drivetrain.SetDriveOutputsEnabled(false);
+    m_driveTestCompleted = false;
+    m_driveTestTimedOut = false;
+    ResetDriveTestState("Canceled");
+    return;
+  }
+
+  if (!m_driveTestActive) {
+    bool started = false;
+    if (ConsumeDashboardButtonEdge("DriveTest/StartForward", m_prevStartForward)) {
+      StartDriveTest(DriveTestMode::kForward, distanceMagnitude, 0.0);
+      started = true;
+    } else if (ConsumeDashboardButtonEdge("DriveTest/StartBackward", m_prevStartBackward)) {
+      StartDriveTest(DriveTestMode::kBackward, -distanceMagnitude, 0.0);
+      started = true;
+    } else if (ConsumeDashboardButtonEdge("DriveTest/StartTurnLeft90", m_prevStartTurnLeft90)) {
+      StartDriveTest(DriveTestMode::kTurnLeft90, 0.0, M_PI / 2.0);
+      started = true;
+    } else if (ConsumeDashboardButtonEdge("DriveTest/StartTurnRight90", m_prevStartTurnRight90)) {
+      StartDriveTest(DriveTestMode::kTurnRight90, 0.0, -M_PI / 2.0);
+      started = true;
+    } else if (ConsumeDashboardButtonEdge("DriveTest/StartTurn180", m_prevStartTurn180)) {
+      StartDriveTest(DriveTestMode::kTurn180, 0.0, M_PI);
+      started = true;
+    }
+
+    m_container->m_drivetrain.SetDriveOutputsEnabled(false);
+    m_container->m_drivetrain.StopDrive();
+    PublishDriveTestTelemetry(started ? "Running" : "Armed");
+    return;
+  }
+
+  double x, y, theta;
+  m_container->m_drivetrain.GetOdometry(x, y, theta);
+  const double dx = x - m_driveTestStartX;
+  const double dy = y - m_driveTestStartY;
+  m_driveTestProgress = dx * std::cos(m_driveTestStartTheta) +
+                        dy * std::sin(m_driveTestStartTheta);
+
+  const double headingErrorFromStart = WrapAngleRadians(m_driveTestStartTheta - theta);
+  m_driveTestCmdVx = 0.0;
+  m_driveTestCmdOmega = 0.0;
+  bool atGoal = false;
+
+  switch (m_driveTestMode) {
+    case DriveTestMode::kForward:
+    case DriveTestMode::kBackward: {
+      m_driveTestPositionError = m_driveTestTargetDistance - m_driveTestProgress;
+      m_driveTestAngleError = headingErrorFromStart;
+      m_driveTestCmdVx = Clamp(posKp * m_driveTestPositionError, -linearMax, linearMax);
+      m_driveTestCmdOmega = Clamp(angleKp * m_driveTestAngleError, -angularMax, angularMax);
+      atGoal = (std::abs(m_driveTestPositionError) <= posTol) &&
+               (std::abs(m_driveTestAngleError) <= angleTolRad);
+      break;
+    }
+    case DriveTestMode::kTurnLeft90:
+    case DriveTestMode::kTurnRight90:
+    case DriveTestMode::kTurn180: {
+      const double desiredTheta = WrapAngleRadians(m_driveTestStartTheta + m_driveTestTargetAngle);
+      m_driveTestPositionError = 0.0;
+      m_driveTestAngleError = WrapAngleRadians(desiredTheta - theta);
+      m_driveTestCmdVx = 0.0;
+      m_driveTestCmdOmega = Clamp(angleKp * m_driveTestAngleError, -angularMax, angularMax);
+      atGoal = std::abs(m_driveTestAngleError) <= angleTolRad;
+      break;
+    }
+    case DriveTestMode::kNone:
+    default:
+      break;
+  }
+
+  if (m_driveTestTimer.Get().value() > timeoutSec) {
+    m_container->m_drivetrain.StopDrive();
+    m_container->m_drivetrain.SetDriveOutputsEnabled(false);
+    m_driveTestActive = false;
+    m_driveTestTimedOut = true;
+    m_driveTestCompleted = false;
+    PublishDriveTestTelemetry("Timed out");
+    return;
+  }
+
+  if (atGoal) {
+    m_container->m_drivetrain.StopDrive();
+    m_container->m_drivetrain.SetDriveOutputsEnabled(false);
+    m_driveTestActive = false;
+    m_driveTestTimedOut = false;
+    m_driveTestCompleted = true;
+    PublishDriveTestTelemetry("Completed");
+    return;
+  }
+
+  m_container->m_drivetrain.SetDriveOutputsEnabled(true);
+  m_container->m_drivetrain.Drive(m_driveTestCmdVx, 0.0, m_driveTestCmdOmega);
+  PublishDriveTestTelemetry("Running");
+}
+
+void Robot::PublishDriveTestTelemetry(const char* status) const {
+  constexpr double kDegPerRad = 180.0 / M_PI;
+  frc::SmartDashboard::PutBoolean("DriveTest/Active", m_driveTestActive);
+  frc::SmartDashboard::PutString("DriveTest/Mode", DriveTestModeToString(m_driveTestMode));
+  frc::SmartDashboard::PutBoolean("DriveTest/Completed", m_driveTestCompleted);
+  frc::SmartDashboard::PutBoolean("DriveTest/TimedOut", m_driveTestTimedOut);
+  frc::SmartDashboard::PutNumber("DriveTest/StartX", m_driveTestStartX);
+  frc::SmartDashboard::PutNumber("DriveTest/StartY", m_driveTestStartY);
+  frc::SmartDashboard::PutNumber("DriveTest/StartThetaDeg", m_driveTestStartTheta * kDegPerRad);
+  frc::SmartDashboard::PutNumber("DriveTest/TargetDistanceM", m_driveTestTargetDistance);
+  frc::SmartDashboard::PutNumber("DriveTest/TargetAngleDeg", m_driveTestTargetAngle * kDegPerRad);
+  frc::SmartDashboard::PutNumber("DriveTest/ProgressM", m_driveTestProgress);
+  frc::SmartDashboard::PutNumber("DriveTest/PositionErrorM", m_driveTestPositionError);
+  frc::SmartDashboard::PutNumber("DriveTest/AngleErrorDeg", m_driveTestAngleError * kDegPerRad);
+  frc::SmartDashboard::PutNumber("DriveTest/CommandedVx", m_driveTestCmdVx);
+  frc::SmartDashboard::PutNumber("DriveTest/CommandedOmega", m_driveTestCmdOmega);
+  frc::SmartDashboard::PutString("DriveTest/Status", status);
 }
 
 #ifndef RUNNING_FRC_TESTS
