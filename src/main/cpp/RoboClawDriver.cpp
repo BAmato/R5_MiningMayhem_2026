@@ -105,11 +105,27 @@ bool RoboClawDriver::SetM2VelocityPID(uint8_t address, float kp, float ki,
 bool RoboClawDriver::WriteNVM(uint8_t address) {
   std::scoped_lock lock(m_mutex);
 
-  uint8_t packet[4] = {address, kCmdWriteNVM};
-  const uint16_t crc = CRC16(packet, 2);
-  packet[2] = static_cast<uint8_t>(crc >> 8);
-  packet[3] = static_cast<uint8_t>(crc & 0xFF);
-  return WriteCommand(packet, std::size(packet));
+  constexpr uint32_t kNvmKey = 0xE22EAB7A;
+  constexpr auto kControllerResetTime = units::millisecond_t{1300};
+
+  uint8_t packet[8] = {address, kCmdWriteNVM};
+  PackUint32BE(&packet[2], kNvmKey);
+  const uint16_t crc = CRC16(packet, 6);
+  packet[6] = static_cast<uint8_t>(crc >> 8);
+  packet[7] = static_cast<uint8_t>(crc & 0xFF);
+
+  FlushInput();
+  const int written = m_serial.Write(reinterpret_cast<const char*>(packet),
+                                     static_cast<int>(std::size(packet)));
+  if (written != static_cast<int>(std::size(packet))) {
+    ++m_errorCount;
+    return false;
+  }
+
+  // Controller resets after a successful NVM write. Allow recovery time.
+  frc::Wait(kControllerResetTime);
+  FlushInput();
+  return true;
 }
 
 std::optional<RoboClawDriver::EncoderResult> RoboClawDriver::ReadM1Encoder(
@@ -136,6 +152,42 @@ std::optional<RoboClawDriver::EncoderResult> RoboClawDriver::ReadM2Encoder(
   }
 
   return EncoderResult{.count = UnpackInt32BE(response), .status = response[4]};
+}
+
+std::optional<RoboClawDriver::VelocityPidResult>
+RoboClawDriver::ReadM1VelocityPID(uint8_t address) {
+  std::scoped_lock lock(m_mutex);
+
+  const uint8_t header[2] = {address, kCmdReadM1VelPID};
+  uint8_t response[18] = {};
+  if (!ReadCommand(header, std::size(header), response, std::size(response))) {
+    return std::nullopt;
+  }
+
+  constexpr double kVelocityPidScale = 65536.0;
+  return VelocityPidResult{
+      .kp = static_cast<double>(UnpackUint32BE(&response[0])) / kVelocityPidScale,
+      .ki = static_cast<double>(UnpackUint32BE(&response[4])) / kVelocityPidScale,
+      .kd = static_cast<double>(UnpackUint32BE(&response[8])) / kVelocityPidScale,
+      .qpps = UnpackUint32BE(&response[12])};
+}
+
+std::optional<RoboClawDriver::VelocityPidResult>
+RoboClawDriver::ReadM2VelocityPID(uint8_t address) {
+  std::scoped_lock lock(m_mutex);
+
+  const uint8_t header[2] = {address, kCmdReadM2VelPID};
+  uint8_t response[18] = {};
+  if (!ReadCommand(header, std::size(header), response, std::size(response))) {
+    return std::nullopt;
+  }
+
+  constexpr double kVelocityPidScale = 65536.0;
+  return VelocityPidResult{
+      .kp = static_cast<double>(UnpackUint32BE(&response[0])) / kVelocityPidScale,
+      .ki = static_cast<double>(UnpackUint32BE(&response[4])) / kVelocityPidScale,
+      .kd = static_cast<double>(UnpackUint32BE(&response[8])) / kVelocityPidScale,
+      .qpps = UnpackUint32BE(&response[12])};
 }
 
 bool RoboClawDriver::ResetEncoders(uint8_t address) {
@@ -383,6 +435,13 @@ int32_t RoboClawDriver::UnpackInt32BE(const uint8_t* src) {
                          (static_cast<uint32_t>(src[2]) << 8) |
                          static_cast<uint32_t>(src[3]);
   return static_cast<int32_t>(value);
+}
+
+uint32_t RoboClawDriver::UnpackUint32BE(const uint8_t* src) {
+  return (static_cast<uint32_t>(src[0]) << 24) |
+         (static_cast<uint32_t>(src[1]) << 16) |
+         (static_cast<uint32_t>(src[2]) << 8) |
+         static_cast<uint32_t>(src[3]);
 }
 
 uint16_t RoboClawDriver::UnpackUint16BE(const uint8_t* src) {

@@ -11,6 +11,13 @@
 
 class Drivetrain : public frc2::SubsystemBase {
  public:
+  struct VelocityPidSetting {
+    double kp;
+    double ki;
+    double kd;
+    uint32_t qpps;
+  };
+
   static constexpr uint8_t kAddrVertical = 0x80;
   static constexpr uint8_t kAddrHorizontal = 0x81;
   static constexpr double kWheelBaseM = 0.254;               // CALIBRATE: measure center-to-center
@@ -57,6 +64,23 @@ class Drivetrain : public frc2::SubsystemBase {
   static double WrapAngleRadians(double angleRad);
   static int32_t MetersPerSecondToCountsPerSecond(double speedMetersPerSecond,
                                                   double countsPerMeter);
+  static bool ConsumeDashboardButtonEdge(const char* key, bool& previousState);
+  static bool PidCloseEnough(double lhs, double rhs);
+  static bool PidMatches(const VelocityPidSetting& a, const VelocityPidSetting& b);
+
+  void InitializePidDashboard();
+  void PublishPidConfigValues() const;
+  void PublishPidPendingValues() const;
+  void PublishPidActualValues() const;
+  void ReadPidPendingValuesFromDashboard();
+  void LoadPidPendingFromConfig();
+  void LoadPidPendingFromActual();
+  bool RefreshPidActualFromControllers();
+  bool ApplyPidPendingToControllers(bool writeNvm);
+  void HandlePidDashboardActions();
+  void UpdatePidMatchAndDirtyFlags();
+  void SetPidStatus(const std::string& status, const std::string& lastError,
+                    bool lastReadOk, bool lastApplyOk);
 
   RoboClawDriver m_roboclaw{frc::SerialPort::Port::kMXP, 38400};
 
@@ -80,4 +104,24 @@ class Drivetrain : public frc2::SubsystemBase {
   bool m_haveEncoderReference{false};
   bool m_driveOutputsEnabled{false};
   bool m_headingHoldActive{false};
+
+  VelocityPidSetting m_verticalM1Config{};
+  VelocityPidSetting m_verticalM2Config{};
+  VelocityPidSetting m_horizontalM1Config{};
+  VelocityPidSetting m_verticalM1Pending{};
+  VelocityPidSetting m_verticalM2Pending{};
+  VelocityPidSetting m_horizontalM1Pending{};
+  VelocityPidSetting m_verticalM1Actual{};
+  VelocityPidSetting m_verticalM2Actual{};
+  VelocityPidSetting m_horizontalM1Actual{};
+  bool m_hasActualPidValues{false};
+  bool m_autoRefreshOnBoot{true};
+  bool m_pidLastReadOk{false};
+  bool m_pidLastApplyOk{false};
+  bool m_prevRefreshActual{false};
+  bool m_prevLoadPendingFromConfig{false};
+  bool m_prevLoadPendingFromActual{false};
+  bool m_prevApplyPending{false};
+  bool m_prevWriteNvm{false};
+  bool m_prevApplyAndWriteNvm{false};
 };
