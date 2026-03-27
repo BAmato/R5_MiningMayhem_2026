@@ -51,7 +51,7 @@ class RoboClawDriver {
   mutable std::mutex m_mutex;
   uint32_t m_errorCount{0};
 
-  static constexpr int kReadTimeoutMs = 3;
+  static constexpr int kReadTimeoutMs = 15;
   static constexpr size_t kMaxResponseLen = 48;
   static constexpr uint8_t kAck = 0xFF;
   static constexpr uint8_t kCmdReadM1Encoder = 16;

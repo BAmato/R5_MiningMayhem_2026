@@ -34,21 +34,6 @@ void Robot::RobotInit() {
   m_imu.Write(0x1C, 0x00);  // ACCEL_CONFIG: +/-2g (16384 LSB/g)
   frc::Wait(50_ms);         // allow oscillator to stabilize
 
-  m_roboClawOk = m_container->m_drivetrain.VerifyControllers();
-  frc::SmartDashboard::PutBoolean("RoboClaw/OK", m_roboClawOk);
-  frc::SmartDashboard::PutString("RoboClaw/Status",
-                                 m_roboClawOk ? "OK" : "MISSING - check MXP wiring and Motion Studio config");
-
-  // Publish firmware version strings at startup for version verification.
-  // These persist on SmartDashboard until the next deploy.
-  // Check these match your Motion Studio firmware version.
-  const auto vertFw = m_container->m_drivetrain.GetFirmwareVersionVertical();
-  const auto horizFw = m_container->m_drivetrain.GetFirmwareVersionHorizontal();
-  frc::SmartDashboard::PutString("RoboClaw/Firmware_0x80",
-      vertFw.value_or("NO RESPONSE"));
-  frc::SmartDashboard::PutString("RoboClaw/Firmware_0x81",
-      horizFw.value_or("NO RESPONSE"));
-
   m_cmdVelWatchdog.Reset();
   m_cmdVelWatchdog.Start();
   m_container->m_drivetrain.SetDriveOutputsEnabled(false);

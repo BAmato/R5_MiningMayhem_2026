@@ -14,11 +14,12 @@ Drivetrain::Drivetrain() {
   m_roboclaw.SetM1VelocityPID(kAddrVertical, 29.20736f, 0.92726f, 0.0f, 1650);
   m_roboclaw.SetM2VelocityPID(kAddrVertical, 33.88054f, 1.12312f, 0.0f, 1320);
   m_roboclaw.WriteNVM(kAddrVertical);
+  frc::Wait(units::millisecond_t{1300});
 
   m_roboclaw.SetM1VelocityPID(kAddrHorizontal, 20.0f, 0.8f, 0.0f, 2600);
   m_roboclaw.WriteNVM(kAddrHorizontal);
 
-  frc::Wait(units::millisecond_t{1200});
+  frc::Wait(units::millisecond_t{1300});
   frc::SmartDashboard::PutBoolean("RoboClaw/PIDLoaded", true);
 
   ResetDriveEncoders();
@@ -160,10 +161,8 @@ void Drivetrain::DriveArcade(double xSpeed, double zRotation) {
 
 void Drivetrain::StopDrive() {
   Drive(0.0, 0.0, 0.0);
-  if (m_driveOutputsEnabled) {
-    m_roboclaw.SetM1M2Speed(kAddrVertical, 0, 0);
-    m_roboclaw.SetM1Speed(kAddrHorizontal, 0);
-  }
+  m_roboclaw.SetM1M2Speed(kAddrVertical, 0, 0);
+  m_roboclaw.SetM1Speed(kAddrHorizontal, 0);
 }
 
 void Drivetrain::SetDriveOutputsEnabled(bool enabled) {
