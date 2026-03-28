@@ -1,6 +1,7 @@
 #include "RoboClawPIDManager.h"
 
 #include <cmath>
+#include <exception>
 #include <iomanip>
 #include <sstream>
 #include <vector>
@@ -194,8 +195,19 @@ void RoboClawPIDManager::Initialize() {
   for (int idx = 0; idx < kNumActiveChannels; ++idx) PublishConfig(idx);
   for (int idx = 0; idx < kNumActiveChannels; ++idx) LoadPendingFromConfig(idx);
 
-  RefreshAllActual();
-  m_status.Set("Initialized");
+  bool bootReadOk = true;
+  try {
+    RefreshAllActual();
+  } catch (const std::exception& e) {
+    bootReadOk = false;
+    m_status.Set("Boot readback failed");
+    m_lastError.Set(std::string("Init readback exception: ") + e.what());
+    m_lastReadOk.Set(false);
+    m_pidLoaded.Set(false);
+  }
+  if (bootReadOk) {
+    m_status.Set("Initialized");
+  }
 }
 
 void RoboClawPIDManager::Periodic(bool robotEnabled) {

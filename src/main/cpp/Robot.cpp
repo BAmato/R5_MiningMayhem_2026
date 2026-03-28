@@ -16,6 +16,8 @@
 
 #include <array>
 #include <cmath>
+#include <cstdio>
+#include <exception>
 #include <hal/FRCUsageReporting.h>
 
 #include <frc/DriverStation.h>
@@ -37,7 +39,11 @@ Robot::Robot() : m_rcDriver(frc::SerialPort::kMXP, 38400), m_pidManager(&m_rcDri
 }
 
 void Robot::RobotInit() {
-  m_pidManager.Initialize();
+  try {
+    m_pidManager.Initialize();
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "[Robot] PIDManager init failed: %s\n", e.what());
+  }
   // MPU-6050 initialization: clear SLEEP bit and set full-scale ranges
   m_imu.Write(0x6B, 0x00);  // PWR_MGMT_1: wake from sleep, use internal oscillator
   m_imu.Write(0x1B, 0x00);  // GYRO_CONFIG: +/-250 deg/s (131 LSB/deg/s)
