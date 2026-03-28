@@ -28,7 +28,7 @@ constexpr uint8_t kCmdWriteNVM = 94;
 
 RoboClawDriver::RoboClawDriver(frc::SerialPort::Port port, int baud) {
   m_serial = new frc::SerialPort(baud, port);
-  m_serial->SetTimeout(0.1);
+  m_serial->SetTimeout(0.1_s);
   m_serial->SetReadBufferSize(64);
 }
 
@@ -156,8 +156,8 @@ bool RoboClawDriver::SetM2VelocityPID(uint8_t address, const VelocityPID& pid) {
   return SetVelocityPID(address, kCmdSetM2VelPID, pid);
 }
 
-RoboClawDriver::PIDReadResult RoboClawDriver::ReadVelocityPID(uint8_t address,
-                                                              uint8_t cmd) {
+auto RoboClawDriver::ReadVelocityPID(uint8_t address, uint8_t cmd)
+    -> PIDReadResult {
   std::scoped_lock lock(m_mutex);
   PIDReadResult result;
   FlushRx();
@@ -200,11 +200,11 @@ RoboClawDriver::PIDReadResult RoboClawDriver::ReadVelocityPID(uint8_t address,
   return result;
 }
 
-PIDReadResult RoboClawDriver::ReadM1VelocityPID(uint8_t address) {
+auto RoboClawDriver::ReadM1VelocityPID(uint8_t address) -> PIDReadResult {
   return ReadVelocityPID(address, kCmdReadM1VelPID);
 }
 
-PIDReadResult RoboClawDriver::ReadM2VelocityPID(uint8_t address) {
+auto RoboClawDriver::ReadM2VelocityPID(uint8_t address) -> PIDReadResult {
   return ReadVelocityPID(address, kCmdReadM2VelPID);
 }
 

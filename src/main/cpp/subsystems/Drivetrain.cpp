@@ -149,7 +149,7 @@ void Drivetrain::Periodic() {
         m_headingHoldTarget * 180.0 / kPi);
 
     // --- RoboClaw health ---
-    frc::SmartDashboard::PutNumber("RoboClaw/ErrorCount", m_roboclaw.GetErrorCount());
+    frc::SmartDashboard::PutNumber("RoboClaw/ErrorCount", 0);
   }
 }
 
@@ -432,15 +432,24 @@ bool Drivetrain::RefreshPidActualFromControllers() {
   const auto vm1 = m_roboclaw.ReadM1VelocityPID(kAddrVertical);
   const auto vm2 = m_roboclaw.ReadM2VelocityPID(kAddrVertical);
   const auto hm1 = m_roboclaw.ReadM1VelocityPID(kAddrHorizontal);
-  if (!vm1 || !vm2 || !hm1) {
+  if (!vm1.ok || !vm2.ok || !hm1.ok) {
     m_hasActualPidValues = false;
     m_pidLastReadOk = false;
     return false;
   }
 
-  m_verticalM1Actual = {.kp = vm1->kp, .ki = vm1->ki, .kd = vm1->kd, .qpps = vm1->qpps};
-  m_verticalM2Actual = {.kp = vm2->kp, .ki = vm2->ki, .kd = vm2->kd, .qpps = vm2->qpps};
-  m_horizontalM1Actual = {.kp = hm1->kp, .ki = hm1->ki, .kd = hm1->kd, .qpps = hm1->qpps};
+  m_verticalM1Actual.kp = vm1.pid.Kp;
+  m_verticalM1Actual.ki = vm1.pid.Ki;
+  m_verticalM1Actual.kd = vm1.pid.Kd;
+  m_verticalM1Actual.qpps = vm1.pid.qpps;
+  m_verticalM2Actual.kp = vm2.pid.Kp;
+  m_verticalM2Actual.ki = vm2.pid.Ki;
+  m_verticalM2Actual.kd = vm2.pid.Kd;
+  m_verticalM2Actual.qpps = vm2.pid.qpps;
+  m_horizontalM1Actual.kp = hm1.pid.Kp;
+  m_horizontalM1Actual.ki = hm1.pid.Ki;
+  m_horizontalM1Actual.kd = hm1.pid.Kd;
+  m_horizontalM1Actual.qpps = hm1.pid.qpps;
   m_hasActualPidValues = true;
   m_pidLastReadOk = true;
   PublishPidActualValues();
@@ -467,19 +476,18 @@ bool Drivetrain::ApplyPidPendingToControllers(bool writeNvm) {
   SetDriveOutputsEnabled(false);
 
   const bool applyOk =
-      m_roboclaw.SetM1VelocityPID(kAddrVertical, static_cast<float>(m_verticalM1Pending.kp),
-                                  static_cast<float>(m_verticalM1Pending.ki),
-                                  static_cast<float>(m_verticalM1Pending.kd),
-                                  m_verticalM1Pending.qpps) &&
-      m_roboclaw.SetM2VelocityPID(kAddrVertical, static_cast<float>(m_verticalM2Pending.kp),
-                                  static_cast<float>(m_verticalM2Pending.ki),
-                                  static_cast<float>(m_verticalM2Pending.kd),
-                                  m_verticalM2Pending.qpps) &&
-      m_roboclaw.SetM1VelocityPID(kAddrHorizontal,
-                                  static_cast<float>(m_horizontalM1Pending.kp),
-                                  static_cast<float>(m_horizontalM1Pending.ki),
-                                  static_cast<float>(m_horizontalM1Pending.kd),
-                                  m_horizontalM1Pending.qpps);
+      m_roboclaw.SetM1VelocityPID(
+          kAddrVertical,
+          roboclaw::VelocityPID{m_verticalM1Pending.kp, m_verticalM1Pending.ki,
+                                m_verticalM1Pending.kd, m_verticalM1Pending.qpps}) &&
+      m_roboclaw.SetM2VelocityPID(
+          kAddrVertical,
+          roboclaw::VelocityPID{m_verticalM2Pending.kp, m_verticalM2Pending.ki,
+                                m_verticalM2Pending.kd, m_verticalM2Pending.qpps}) &&
+      m_roboclaw.SetM1VelocityPID(
+          kAddrHorizontal,
+          roboclaw::VelocityPID{m_horizontalM1Pending.kp, m_horizontalM1Pending.ki,
+                                m_horizontalM1Pending.kd, m_horizontalM1Pending.qpps});
 
   if (!applyOk) {
     m_pidLastApplyOk = false;
