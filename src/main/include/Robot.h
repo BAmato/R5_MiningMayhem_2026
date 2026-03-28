@@ -71,6 +71,7 @@ class Robot : public frc::TimedRobot {
   double m_driveTestProgress{0.0};
   double m_driveTestPositionError{0.0};
   double m_driveTestAngleError{0.0};
+  double m_driveTestHeadingIntegralDeg{0.0};
   double m_driveTestCmdVx{0.0};
   double m_driveTestCmdOmega{0.0};
   frc::Timer m_driveTestTimer;
