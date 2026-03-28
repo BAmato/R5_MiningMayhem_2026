@@ -12,12 +12,9 @@
 
 #include "Robot.h"
 #include "RoboClawDriver.h"
-#include "RoboClawPIDManager.h"
 
-#include <array>
 #include <cmath>
 #include <cstdio>
-#include <exception>
 #include <hal/FRCUsageReporting.h>
 
 #include <frc/DriverStation.h>
@@ -26,12 +23,6 @@
 #include <frc2/command/CommandScheduler.h>
 #include <units/time.h>
 
-static const std::array<roboclaw::VelocityPID, 3> kDefaultPIDs = {{
-    {.Kp = 29.20736, .Ki = 0.92726, .Kd = 0.0, .qpps = 1650},
-    {.Kp = 33.88054, .Ki = 1.12312, .Kd = 0.0, .qpps = 1320},
-    {.Kp = 1.0, .Ki = 0.5, .Kd = 0.25, .qpps = 44000},
-}};
-
 Robot::Robot() {
   EnableLiveWindowInTest(true);
   HAL_Report(HALUsageReporting::kResourceType_Framework,
@@ -39,13 +30,6 @@ Robot::Robot() {
 }
 
 void Robot::RobotInit() {
-  try {
-    m_pidManager = std::make_unique<roboclaw::RoboClawPIDManager>(
-        m_container->m_drivetrain.GetRoboClawDriver(), kDefaultPIDs);
-    m_pidManager->Initialize();
-  } catch (const std::exception& e) {
-    std::fprintf(stderr, "[Robot] PIDManager init failed: %s\n", e.what());
-  }
   // MPU-6050 initialization: clear SLEEP bit and set full-scale ranges
   m_imu.Write(0x6B, 0x00);  // PWR_MGMT_1: wake from sleep, use internal oscillator
   m_imu.Write(0x1B, 0x00);  // GYRO_CONFIG: +/-250 deg/s (131 LSB/deg/s)
@@ -70,10 +54,6 @@ void Robot::RobotInit() {
  */
 void Robot::RobotPeriodic() {
   static int dashboardCounter = 0;
-  if (m_pidManager) {
-    m_pidManager->Periodic(IsEnabled());
-  }
-
   ReadIMU();
 
   // --- Populate serial bridge TX ---
