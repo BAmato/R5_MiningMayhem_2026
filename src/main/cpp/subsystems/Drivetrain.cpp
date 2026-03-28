@@ -28,15 +28,36 @@ Drivetrain::Drivetrain() {
 
   InitializePidDashboard();
   PublishPidConfigValues();
-  LoadPidPendingFromConfig();
+  LoadPidPendingFromConfig();       // Pending = Config
   PublishPidPendingValues();
   PublishPidActualValues();
   UpdatePidMatchAndDirtyFlags();
-  if (RefreshPidActualFromControllers()) {
-    SetPidStatus("Ready", "", true, false);
+
+  // Apply config PID values to controller RAM at every boot.
+  // This ensures consistent velocity control regardless of what is in NVM.
+  // No NVM write is performed — values only live in RAM until next power cycle.
+  const bool applyOk =
+      m_roboclaw.SetM1VelocityPID(
+          kAddrVertical,
+          roboclaw::VelocityPID{m_verticalM1Config.kp, m_verticalM1Config.ki,
+                                m_verticalM1Config.kd, m_verticalM1Config.qpps}) &&
+      m_roboclaw.SetM2VelocityPID(
+          kAddrVertical,
+          roboclaw::VelocityPID{m_verticalM2Config.kp, m_verticalM2Config.ki,
+                                m_verticalM2Config.kd, m_verticalM2Config.qpps}) &&
+      m_roboclaw.SetM1VelocityPID(
+          kAddrHorizontal,
+          roboclaw::VelocityPID{m_horizontalM1Config.kp, m_horizontalM1Config.ki,
+                                m_horizontalM1Config.kd, m_horizontalM1Config.qpps});
+
+  // Read back what the controllers now have, to confirm and populate Actual/*.
+  if (applyOk && RefreshPidActualFromControllers()) {
+    SetPidStatus("Ready", "", true, true);
+  } else if (applyOk) {
+    SetPidStatus("Applied; readback failed", "RAM write OK but readback failed",
+                 false, true);
   } else {
-    SetPidStatus("Boot readback failed",
-                 "Failed to read one or more PID slots at startup",
+    SetPidStatus("Boot apply failed", "Failed to write PID to controller RAM",
                  false, false);
   }
 
