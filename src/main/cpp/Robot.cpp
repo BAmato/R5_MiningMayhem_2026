@@ -204,7 +204,7 @@ void Robot::ReadIMU() {
   int16_t gyroZRaw = static_cast<int16_t>((buf[4] << 8) | buf[5]);
 
   // 131 LSB/(deg/s) at +/-250 deg/s range; convert to rad/s
-  double yawRateRad = (gyroZRaw / 131.0) * (M_PI / 180.0);
+  double yawRateRad = -(gyroZRaw / 131.0) * (M_PI / 180.0);
   m_container->m_drivetrain.SetGyroYawRate(yawRateRad);
 }
 
