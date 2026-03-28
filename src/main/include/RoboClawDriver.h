@@ -1,11 +1,28 @@
 #pragma once
 
+#include <frc/SerialPort.h>
+#include <frc/Timer.h>
+
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <optional>
 #include <string>
 
-#include <frc/SerialPort.h>
+namespace roboclaw {
+
+struct VelocityPID {
+  double Kp = 1.0;
+  double Ki = 0.5;
+  double Kd = 0.25;
+  uint32_t qpps = 44000;
+};
+
+struct PIDReadResult {
+  bool ok = false;
+  VelocityPID pid;
+  std::string error;
+};
 
 class RoboClawDriver {
  public:
@@ -13,66 +30,51 @@ class RoboClawDriver {
     int32_t count;
     uint8_t status;
   };
-  struct VelocityPidResult {
-    double kp;
-    double ki;
-    double kd;
-    uint32_t qpps;
-  };
 
-  explicit RoboClawDriver(frc::SerialPort::Port port, int baudRate = 38400);
-  ~RoboClawDriver() = default;
-  RoboClawDriver(const RoboClawDriver&) = delete;
-  RoboClawDriver& operator=(const RoboClawDriver&) = delete;
+  explicit RoboClawDriver(frc::SerialPort::Port port = frc::SerialPort::kMXP,
+                          int baud = 38400);
+  ~RoboClawDriver();
 
+  bool SetM1VelocityPID(uint8_t address, const VelocityPID& pid);
+  bool SetM2VelocityPID(uint8_t address, const VelocityPID& pid);
+
+  PIDReadResult ReadM1VelocityPID(uint8_t address);
+  PIDReadResult ReadM2VelocityPID(uint8_t address);
+
+  bool WriteNVM(uint8_t address);
+
+  static uint16_t CalcCRC16(const uint8_t* data, size_t len);
+  void FlushRx();
+
+  // Legacy APIs retained for existing drivetrain behavior.
   bool SetM1Speed(uint8_t address, int32_t speed);
   bool SetM2Speed(uint8_t address, int32_t speed);
   bool SetM1M2Speed(uint8_t address, int32_t speedM1, int32_t speedM2);
-  bool SetM1VelocityPID(uint8_t address, float kp, float ki, float kd,
-                        uint32_t qpps);
-  bool SetM2VelocityPID(uint8_t address, float kp, float ki, float kd,
-                        uint32_t qpps);
-  bool WriteNVM(uint8_t address);
-
   std::optional<EncoderResult> ReadM1Encoder(uint8_t address);
   std::optional<EncoderResult> ReadM2Encoder(uint8_t address);
-  std::optional<VelocityPidResult> ReadM1VelocityPID(uint8_t address);
-  std::optional<VelocityPidResult> ReadM2VelocityPID(uint8_t address);
   bool ResetEncoders(uint8_t address);
-
   std::optional<std::string> ReadFirmwareVersion(uint8_t address);
-  uint32_t GetErrorCount() const;
-  void ResetErrorCount();
 
  private:
-  static uint16_t CRC16(const uint8_t* data, size_t length);
-  static void CRC16Update(uint16_t& crc, uint8_t byte);
-  bool WriteCommand(const uint8_t* packet, size_t length);
-  bool ReadCommand(const uint8_t* header, size_t headerLen, uint8_t* response,
-                   size_t responseLen);
-  void FlushInput();
+  frc::SerialPort* m_serial = nullptr;
+  std::mutex m_mutex;
+
+  bool SendPacket(uint8_t* buf, size_t payloadLen);
+  int ReadBytes(uint8_t* dst, int n, int timeoutMs = 20);
+
+  bool SetVelocityPID(uint8_t address, uint8_t cmd, const VelocityPID& pid);
+  PIDReadResult ReadVelocityPID(uint8_t address, uint8_t cmd);
+
+  bool SendSimpleWriteWithAck(const uint8_t* packet, size_t len, int ackTimeoutMs = 20);
+  std::optional<EncoderResult> ReadEncoder(uint8_t address, uint8_t cmd);
+
   static void PackInt32BE(uint8_t* dest, int32_t value);
+  static void PackUint32BE(uint8_t* dest, uint32_t value);
   static int32_t UnpackInt32BE(const uint8_t* src);
   static uint32_t UnpackUint32BE(const uint8_t* src);
   static uint16_t UnpackUint16BE(const uint8_t* src);
-
-  frc::SerialPort m_serial;
-  mutable std::mutex m_mutex;
-  uint32_t m_errorCount{0};
-
-  static constexpr int kReadTimeoutMs = 15;
-  static constexpr size_t kMaxResponseLen = 48;
-  static constexpr uint8_t kAck = 0xFF;
-  static constexpr uint8_t kCmdReadM1Encoder = 16;
-  static constexpr uint8_t kCmdReadM2Encoder = 17;
-  static constexpr uint8_t kCmdResetEncoders = 20;
-  static constexpr uint8_t kCmdReadFirmware = 21;
-  static constexpr uint8_t kCmdSetM1Speed = 35;
-  static constexpr uint8_t kCmdSetM2Speed = 36;
-  static constexpr uint8_t kCmdSetM1M2Speed = 37;
-  static constexpr uint8_t kCmdSetM1VelPID = 28;
-  static constexpr uint8_t kCmdSetM2VelPID = 29;
-  static constexpr uint8_t kCmdReadM1VelPID = 55;
-  static constexpr uint8_t kCmdReadM2VelPID = 56;
-  static constexpr uint8_t kCmdWriteNVM = 94;
 };
+
+}  // namespace roboclaw
+
+using RoboClawDriver = roboclaw::RoboClawDriver;
