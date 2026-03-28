@@ -19,7 +19,6 @@
 #include <frc2/command/Command.h>
 
 #include "RoboClawDriver.h"
-#include "RoboClawPIDManager.h"
 #include "RobotContainer.h"
 
 class Robot : public frc::TimedRobot {
@@ -50,7 +49,6 @@ class Robot : public frc::TimedRobot {
   frc2::Command* m_autonomousCommand = nullptr;
 
   RobotContainer* m_container = RobotContainer::GetInstance();
-  std::unique_ptr<roboclaw::RoboClawPIDManager> m_pidManager;
   frc::I2C m_imu{frc::I2C::Port::kOnboard, 0x68};
   uint8_t m_matchState{0};
   frc::Timer m_cmdVelWatchdog;

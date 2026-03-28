@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <thread>
 
@@ -193,15 +194,24 @@ auto RoboClawDriver::ReadVelocityPID(uint8_t address, uint8_t cmd)
     return result;
   }
 
+  frc::Wait(10_ms);  // Give RoboClaw time to process query and begin responding.
+
   uint8_t resp[18] = {};
-  const int got = ReadBytes(resp, 18, 50);
+  const int got = ReadBytes(resp, 18, 100);  // 100ms is generous at 38400 baud.
   if (got < 18) {
     result.error = "Timeout: expected 18 bytes, got " + std::to_string(got);
     frc::Wait(10_ms);
     return result;
   }
 
-  const uint16_t calc = CalcCRC16(resp, 16);
+  // CRC covers address + cmd + 16 data bytes (per RoboClaw manual).
+  // This matches how ReadEncoder() computes its CRC, and how the controller
+  // computes the CRC bytes it appends to the response.
+  uint8_t crcBuf[18];
+  crcBuf[0] = address;
+  crcBuf[1] = cmd;
+  std::memcpy(crcBuf + 2, resp, 16);
+  const uint16_t calc = CalcCRC16(crcBuf, 18);
   const uint16_t recv = static_cast<uint16_t>((resp[16] << 8) | resp[17]);
   if (calc != recv) {
     char msg[96];
