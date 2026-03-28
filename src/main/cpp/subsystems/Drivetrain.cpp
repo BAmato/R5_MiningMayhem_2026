@@ -4,6 +4,7 @@
 
 #include <frc/DriverStation.h>
 #include <frc/smartdashboard/SmartDashboard.h>
+#include <networktables/NetworkTableInstance.h>
 
 namespace {
 constexpr Drivetrain::VelocityPidSetting kVerticalM1DefaultPid{
@@ -12,9 +13,16 @@ constexpr Drivetrain::VelocityPidSetting kVerticalM2DefaultPid{
     .kp = 33.88054, .ki = 1.12312, .kd = 0.0, .qpps = 1320};
 constexpr Drivetrain::VelocityPidSetting kHorizontalM1DefaultPid{
     .kp = 20.0, .ki = 0.8, .kd = 0.0, .qpps = 2600};
+#if 0  // DISABLED: heading-hold PID — replaced by encoder balance loop for tuning
 // Feed-forward trim: left motor (M1) still runs ~4.2% faster than right in
 // encoder measurements, so reduce commanded M1 speed to keep straight tracking.
 constexpr double kLeftMotorTrim = 0.958;
+#endif
+// --- ENCODER BALANCE TUNING ---
+constexpr double kEncBalanceKp = 0.05;  // tune this: increase if drift persists, decrease if oscillating
+static int32_t encLeftPrev = 0;
+static int32_t encRightPrev = 0;
+auto ntDriveTable = nt::NetworkTableInstance::GetDefault().GetTable("Drive");
 constexpr double kPidMatchTolerance = 1e-4;
 constexpr const char* kPidController80M1 = "RoboClawPID/Controller_0x80/M1";
 constexpr const char* kPidController80M2 = "RoboClawPID/Controller_0x80/M2";
@@ -119,6 +127,7 @@ void Drivetrain::Periodic() {
   m_odomY += dForward * std::sin(m_odomTheta) + dHorizM * std::cos(m_odomTheta);
 
   double correctedOmega = m_cmdOmega;
+#if 0  // DISABLED: heading-hold PID — replaced by encoder balance loop for tuning
   if (m_headingHoldActive && std::abs(m_cmdOmega) < kOmegaDeadband) {
     const double headingError = WrapAngleRadians(m_headingHoldTarget - m_odomTheta);
     const double correction = Clamp(headingError * kHeadingHoldKP,
@@ -128,19 +137,51 @@ void Drivetrain::Periodic() {
   } else {
     m_headingHoldTarget = m_odomTheta;
   }
+#endif
 
   const double vertLeft = m_cmdVx - correctedOmega * kWheelBaseM / 2.0;
   const double vertRight = m_cmdVx + correctedOmega * kWheelBaseM / 2.0;
   const double horiz = m_cmdVy;
 
+#if 0  // DISABLED: heading-hold PID — replaced by encoder balance loop for tuning
   const int32_t leftQpps = MetersPerSecondToCountsPerSecond(vertLeft, kVertCountsPerM);
   const int32_t leftTrimmedQpps =
       static_cast<int32_t>(std::lround(static_cast<double>(leftQpps) * kLeftMotorTrim));
   const int32_t rightQpps = MetersPerSecondToCountsPerSecond(vertRight, kVertCountsPerM);
   const int32_t horizQpps = MetersPerSecondToCountsPerSecond(horiz, kHorizCountsPerM);
+#endif
+
+  const int32_t leftQpps = MetersPerSecondToCountsPerSecond(vertLeft, kVertCountsPerM);
+  const int32_t rightQpps = MetersPerSecondToCountsPerSecond(vertRight, kVertCountsPerM);
+  const int32_t horizQpps = MetersPerSecondToCountsPerSecond(horiz, kHorizCountsPerM);
+
+  // Encoder balance loop — keeps left and right wheel deltas equal each cycle
+  int32_t deltaLeft = m_leftEncoderCount - encLeftPrev;
+  int32_t deltaRight = m_rightEncoderCount - encRightPrev;
+  if (m_cmdVx < 0.0) {
+    // M2 encoder counts inverted in reverse — negate to match M1 sign convention.
+    deltaRight = -deltaRight;
+  }
+  encLeftPrev = m_leftEncoderCount;
+  encRightPrev = m_rightEncoderCount;
+
+  double encError = static_cast<double>(deltaLeft - deltaRight);  // positive = left faster than right
+  double balanceCorrection = kEncBalanceKp * encError;  // in encoder counts/sec
+
+  // Apply correction symmetrically — slow the faster side, speed up the slower
+  double speedLeft_cps = static_cast<double>(leftQpps) - balanceCorrection;
+  double speedRight_cps = static_cast<double>(rightQpps) + balanceCorrection;
+
+  ntDriveTable->GetEntry("EncBalanceError").SetDouble(encError);
+  ntDriveTable->GetEntry("EncBalanceCorrection").SetDouble(balanceCorrection);
+  ntDriveTable->GetEntry("EncBalanceKp").SetDouble(kEncBalanceKp);
 
   if (m_driveOutputsEnabled) {
+#if 0  // DISABLED: heading-hold PID — replaced by encoder balance loop for tuning
     m_roboclaw.SetM1M2Speed(kAddrVertical, leftTrimmedQpps, rightQpps);
+#endif
+    m_roboclaw.SetM1Speed(kAddrVertical, static_cast<int32_t>(std::lround(speedLeft_cps)));
+    m_roboclaw.SetM2Speed(kAddrVertical, static_cast<int32_t>(std::lround(speedRight_cps)));
     m_roboclaw.SetM1Speed(kAddrHorizontal, horizQpps);
   }
 
@@ -208,6 +249,8 @@ void Drivetrain::ResetDriveEncoders() {
   m_prevLeftEncoderCount = 0;
   m_prevRightEncoderCount = 0;
   m_prevHorizEncoderCount = 0;
+  encLeftPrev = 0;
+  encRightPrev = 0;
   m_haveEncoderReference = true;
 
   ResetOdometry();
