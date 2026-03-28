@@ -6,6 +6,8 @@
 
 #include <frc/SerialPort.h>
 #include <frc2/command/SubsystemBase.h>
+#include <networktables/NetworkTable.h>
+#include <networktables/NetworkTableEntry.h>
 
 #include "RoboClawDriver.h"
 
@@ -105,6 +107,19 @@ class Drivetrain : public frc2::SubsystemBase {
   bool m_haveEncoderReference{false};
   bool m_driveOutputsEnabled{false};
   bool m_headingHoldActive{false};
+
+  std::shared_ptr<nt::NetworkTable> m_driveBalanceTuningTable;
+  // NT entries for Glass-tunable encoder balance parameters
+  nt::NetworkTableEntry ntEncBalanceKp;
+  nt::NetworkTableEntry ntDriveSpeedFraction;
+  nt::NetworkTableEntry ntQPPS_M1;
+  nt::NetworkTableEntry ntQPPS_M2;
+
+  // Live values read from NT each loop
+  double m_encBalanceKp{0.05};
+  double m_driveSpeedFraction{0.05};
+  double m_qpps_M1{1650.0};
+  double m_qpps_M2{1320.0};
 
   VelocityPidSetting m_verticalM1Config{};
   VelocityPidSetting m_verticalM2Config{};
