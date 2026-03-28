@@ -12,6 +12,9 @@ constexpr Drivetrain::VelocityPidSetting kVerticalM2DefaultPid{
     .kp = 33.88054, .ki = 1.12312, .kd = 0.0, .qpps = 1320};
 constexpr Drivetrain::VelocityPidSetting kHorizontalM1DefaultPid{
     .kp = 20.0, .ki = 0.8, .kd = 0.0, .qpps = 2600};
+// Feed-forward trim: left motor (M1) runs ~9.5% faster than right in encoder
+// measurements, so reduce commanded M1 speed to keep straight tracking.
+constexpr double kLeftMotorTrim = 0.905;
 constexpr double kPidMatchTolerance = 1e-4;
 constexpr const char* kPidController80M1 = "RoboClawPID/Controller_0x80/M1";
 constexpr const char* kPidController80M2 = "RoboClawPID/Controller_0x80/M2";
@@ -127,11 +130,13 @@ void Drivetrain::Periodic() {
   const double horiz = m_cmdVy;
 
   const int32_t leftQpps = MetersPerSecondToCountsPerSecond(vertLeft, kVertCountsPerM);
+  const int32_t leftTrimmedQpps =
+      static_cast<int32_t>(std::lround(static_cast<double>(leftQpps) * kLeftMotorTrim));
   const int32_t rightQpps = MetersPerSecondToCountsPerSecond(vertRight, kVertCountsPerM);
   const int32_t horizQpps = MetersPerSecondToCountsPerSecond(horiz, kHorizCountsPerM);
 
   if (m_driveOutputsEnabled) {
-    m_roboclaw.SetM1M2Speed(kAddrVertical, leftQpps, rightQpps);
+    m_roboclaw.SetM1M2Speed(kAddrVertical, leftTrimmedQpps, rightQpps);
     m_roboclaw.SetM1Speed(kAddrHorizontal, horizQpps);
   }
 
