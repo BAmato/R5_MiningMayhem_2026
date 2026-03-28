@@ -57,7 +57,7 @@ class RoboClawDriver {
 
  private:
   frc::SerialPort* m_serial = nullptr;
-  mutable std::mutex m_mutex;
+  mutable std::mutex m_serialMutex;
   void FlushRxUnlocked();
 
   bool SendPacket(uint8_t* buf, size_t payloadLen);

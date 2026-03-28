@@ -91,7 +91,6 @@ uint16_t RoboClawDriver::UnpackUint16BE(const uint8_t* src) {
 }
 
 void RoboClawDriver::FlushRx() {
-  std::lock_guard<std::mutex> lock(m_mutex);
   FlushRxUnlocked();
 }
 
@@ -141,7 +140,7 @@ int RoboClawDriver::ReadBytes(uint8_t* dst, int n, int timeoutMs) {
 
 bool RoboClawDriver::SetVelocityPID(uint8_t address, uint8_t cmd,
                                     const VelocityPID& pid) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   FlushRxUnlocked();
 
   const uint32_t dFp = static_cast<uint32_t>(pid.Kd * 65536.0 + 0.5);
@@ -178,7 +177,7 @@ bool RoboClawDriver::SetM2VelocityPID(uint8_t address, const VelocityPID& pid) {
 
 auto RoboClawDriver::ReadVelocityPID(uint8_t address, uint8_t cmd)
     -> PIDReadResult {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   PIDReadResult result;
   if (!m_serial) {
     result.error = "Serial port unavailable";
@@ -233,7 +232,7 @@ auto RoboClawDriver::ReadM2VelocityPID(uint8_t address) -> PIDReadResult {
 }
 
 bool RoboClawDriver::WriteNVM(uint8_t address) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   FlushRxUnlocked();
 
   uint8_t packet[8] = {address, kCmdWriteNVM, 0xE2, 0x2E, 0xAB, 0x7A, 0, 0};
@@ -315,7 +314,7 @@ std::optional<RoboClawDriver::EncoderResult> RoboClawDriver::ReadEncoder(uint8_t
 }
 
 bool RoboClawDriver::SetM1Speed(uint8_t address, int32_t speed) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   uint8_t packet[8] = {address, kCmdSetM1Speed};
   PackInt32BE(&packet[2], speed);
   const uint16_t crc = CalcCRC16(packet, 6);
@@ -325,7 +324,7 @@ bool RoboClawDriver::SetM1Speed(uint8_t address, int32_t speed) {
 }
 
 bool RoboClawDriver::SetM2Speed(uint8_t address, int32_t speed) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   uint8_t packet[8] = {address, kCmdSetM2Speed};
   PackInt32BE(&packet[2], speed);
   const uint16_t crc = CalcCRC16(packet, 6);
@@ -335,7 +334,7 @@ bool RoboClawDriver::SetM2Speed(uint8_t address, int32_t speed) {
 }
 
 bool RoboClawDriver::SetM1M2Speed(uint8_t address, int32_t speedM1, int32_t speedM2) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   uint8_t packet[12] = {address, kCmdSetM1M2Speed};
   PackInt32BE(&packet[2], speedM1);
   PackInt32BE(&packet[6], speedM2);
@@ -346,17 +345,17 @@ bool RoboClawDriver::SetM1M2Speed(uint8_t address, int32_t speedM1, int32_t spee
 }
 
 std::optional<RoboClawDriver::EncoderResult> RoboClawDriver::ReadM1Encoder(uint8_t address) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   return ReadEncoder(address, kCmdReadM1Encoder);
 }
 
 std::optional<RoboClawDriver::EncoderResult> RoboClawDriver::ReadM2Encoder(uint8_t address) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   return ReadEncoder(address, kCmdReadM2Encoder);
 }
 
 bool RoboClawDriver::ResetEncoders(uint8_t address) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   uint8_t packet[4] = {address, kCmdResetEncoders};
   const uint16_t crc = CalcCRC16(packet, 2);
   packet[2] = static_cast<uint8_t>(crc >> 8);
@@ -365,7 +364,7 @@ bool RoboClawDriver::ResetEncoders(uint8_t address) {
 }
 
 std::optional<std::string> RoboClawDriver::ReadFirmwareVersion(uint8_t address) {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::lock_guard<std::mutex> lock(m_serialMutex);
   if (!m_serial) {
     return std::nullopt;
   }
