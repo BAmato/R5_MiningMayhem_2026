@@ -166,6 +166,15 @@ void Drivetrain::Periodic() {
     frc::SmartDashboard::PutNumber("Drive/QPPS_Horiz",
         static_cast<double>(static_cast<int32_t>(std::lround(
             m_cmdVy * kHorizCountsPerM))));
+    // Publish actual encoder velocities (counts/cycle * 50Hz = counts/sec estimate)
+    // These help diagnose QPPS convergence between left and right channels.
+    // dLeft/dRight/dHoriz are already computed above in Periodic() — use those values.
+    frc::SmartDashboard::PutNumber("Drive/QPPS_Left_Actual",
+        static_cast<double>(dLeftCounts) * 50.0);
+    frc::SmartDashboard::PutNumber("Drive/QPPS_Right_Actual",
+        static_cast<double>(dRightCounts) * 50.0);
+    frc::SmartDashboard::PutNumber("Drive/QPPS_Horiz_Actual",
+        static_cast<double>(dHorizCounts) * 50.0);
     frc::SmartDashboard::PutBoolean("Control/DriveOutputsEnabled",
                                     m_driveOutputsEnabled);
 
