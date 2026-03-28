@@ -35,6 +35,8 @@ void Robot::RobotInit() {
   m_imu.Write(0x1B, 0x00);  // GYRO_CONFIG: +/-250 deg/s (131 LSB/deg/s)
   m_imu.Write(0x1C, 0x00);  // ACCEL_CONFIG: +/-2g (16384 LSB/g)
   frc::Wait(50_ms);         // allow oscillator to stabilize
+  CalibrateGyroBias();
+  frc::SmartDashboard::PutNumber("IMU/GyroBiasRadPerSec", m_gyroZBiasRadPerSec);
 
   m_cmdVelWatchdog.Reset();
   m_cmdVelWatchdog.Start();
@@ -54,6 +56,12 @@ void Robot::RobotInit() {
  */
 void Robot::RobotPeriodic() {
   static int dashboardCounter = 0;
+
+  if (ConsumeDashboardButtonEdge("IMU/RecalibrateGyro", m_prevRecalibrateGyro)) {
+    CalibrateGyroBias();
+    frc::SmartDashboard::PutNumber("IMU/GyroBiasRadPerSec", m_gyroZBiasRadPerSec);
+  }
+
   ReadIMU();
 
   // --- Populate serial bridge TX ---
@@ -203,9 +211,29 @@ void Robot::ReadIMU() {
   // Gyro Z is at bytes 4 (high) and 5 (low)
   int16_t gyroZRaw = static_cast<int16_t>((buf[4] << 8) | buf[5]);
 
-  // 131 LSB/(deg/s) at +/-250 deg/s range; convert to rad/s
-  double yawRateRad = (gyroZRaw / 131.0) * (M_PI / 180.0);
+  // 131 LSB/(deg/s) at +/-250 deg/s range; convert to rad/s and remove bias.
+  double yawRateRad = (gyroZRaw / 131.0) * (M_PI / 180.0) - m_gyroZBiasRadPerSec;
+  constexpr double kGyroDeadbandRadPerSec = 0.005;
+  if (std::abs(yawRateRad) < kGyroDeadbandRadPerSec) {
+    yawRateRad = 0.0;
+  }
   m_container->m_drivetrain.SetGyroYawRate(yawRateRad);
+}
+
+void Robot::CalibrateGyroBias() {
+  constexpr int kCalibrationSamples = 50;
+  double biasAccum = 0.0;
+  for (int i = 0; i < kCalibrationSamples; ++i) {
+    uint8_t regAddr = 0x43;
+    uint8_t buf[6] = {};
+    m_imu.WriteBulk(&regAddr, 1);
+    m_imu.ReadOnly(6, buf);
+    int16_t gyroZRaw = static_cast<int16_t>((buf[4] << 8) | buf[5]);
+    biasAccum += static_cast<double>(gyroZRaw);
+    frc::Wait(2_ms);
+  }
+  m_gyroZBiasRadPerSec =
+      (biasAccum / static_cast<double>(kCalibrationSamples) / 131.0) * (M_PI / 180.0);
 }
 
 double Robot::Clamp(double value, double minValue, double maxValue) {
@@ -258,6 +286,8 @@ void Robot::InitializeDriveTestDashboard() {
   frc::SmartDashboard::SetDefaultBoolean("DriveTest/StartTurn180", false);
   frc::SmartDashboard::SetDefaultBoolean("DriveTest/Cancel", false);
   frc::SmartDashboard::SetDefaultBoolean("DriveTest/ResetOdometry", false);
+  frc::SmartDashboard::SetDefaultBoolean("IMU/RecalibrateGyro", false);
+  frc::SmartDashboard::SetDefaultNumber("IMU/GyroBiasRadPerSec", 0.0);
 }
 
 void Robot::ResetDriveTestState(const char* status) {

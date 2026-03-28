@@ -67,6 +67,10 @@ Drivetrain::Drivetrain() {
 void Drivetrain::Periodic() {
   static int dashboardCounter = 0;
   HandlePidDashboardActions();
+  if (ConsumeDashboardButtonEdge("Drive/FullReset", m_prevFullReset)) {
+    ResetDriveEncoders();
+    ResetOdometry(0.0, 0.0, 0.0);
+  }
   ReadPidPendingValuesFromDashboard();
   UpdatePidMatchAndDirtyFlags();
 
@@ -349,6 +353,7 @@ void Drivetrain::InitializePidDashboard() {
   frc::SmartDashboard::SetDefaultBoolean("RoboClawPID/ApplyPendingToControllers", false);
   frc::SmartDashboard::SetDefaultBoolean("RoboClawPID/WriteNVM", false);
   frc::SmartDashboard::SetDefaultBoolean("RoboClawPID/ApplyAndWriteNVM", false);
+  frc::SmartDashboard::SetDefaultBoolean("Drive/FullReset", false);
   m_autoRefreshOnBoot = frc::SmartDashboard::GetBoolean(
       "RoboClawPID/AutoRefreshOnBoot", m_autoRefreshOnBoot);
 }
