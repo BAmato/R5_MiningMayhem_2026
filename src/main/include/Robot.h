@@ -82,6 +82,8 @@ class Robot : public frc::TimedRobot {
   bool m_prevStartTurn180{false};
   bool m_prevCancel{false};
   bool m_prevResetOdometry{false};
+  bool m_prevRecalibrateGyro{false};
+  double m_gyroZBiasRadPerSec{0.0};
 
   static double Clamp(double value, double minValue, double maxValue);
   static double WrapAngleRadians(double angle);
@@ -92,5 +94,6 @@ class Robot : public frc::TimedRobot {
   void UpdateDriveTest();
   bool ConsumeDashboardButtonEdge(const char* key, bool& previousState);
   void PublishDriveTestTelemetry(const char* status) const;
+  void CalibrateGyroBias();
   void ReadIMU();
 };

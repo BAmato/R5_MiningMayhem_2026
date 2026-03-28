@@ -125,4 +125,5 @@ class Drivetrain : public frc2::SubsystemBase {
   bool m_prevApplyPending{false};
   bool m_prevWriteNvm{false};
   bool m_prevApplyAndWriteNvm{false};
+  bool m_prevFullReset{false};
 };
