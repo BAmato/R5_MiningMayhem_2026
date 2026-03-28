@@ -13,6 +13,7 @@
 #include "Robot.h"
 #include "RoboClawDriver.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <hal/FRCUsageReporting.h>
@@ -298,6 +299,7 @@ void Robot::ResetDriveTestState(const char* status) {
   m_driveTestProgress = 0.0;
   m_driveTestPositionError = 0.0;
   m_driveTestAngleError = 0.0;
+  m_driveTestHeadingIntegralDeg = 0.0;
   m_driveTestCmdVx = 0.0;
   m_driveTestCmdOmega = 0.0;
   m_driveTestTimer.Stop();
@@ -316,6 +318,7 @@ void Robot::StartDriveTest(DriveTestMode mode, double targetDistance, double tar
   m_driveTestProgress = 0.0;
   m_driveTestPositionError = targetDistance;
   m_driveTestAngleError = targetAngle;
+  m_driveTestHeadingIntegralDeg = 0.0;
   m_driveTestCmdVx = 0.0;
   m_driveTestCmdOmega = 0.0;
   m_driveTestTimer.Reset();
@@ -415,7 +418,18 @@ void Robot::UpdateDriveTest() {
       m_driveTestPositionError = m_driveTestTargetDistance - m_driveTestProgress;
       m_driveTestAngleError = headingErrorFromStart;
       m_driveTestCmdVx = Clamp(posKp * m_driveTestPositionError, -linearMax, linearMax);
-      m_driveTestCmdOmega = Clamp(angleKp * m_driveTestAngleError, -angularMax, angularMax);
+#if 0  // DISABLED: heading-hold PID — replaced by encoder balance loop for tuning
+      m_driveTestHeadingIntegralDeg += m_driveTestAngleError * kDegPerRad *
+          Drivetrain::kLoopPeriodSec;
+      // Clamp integral to prevent windup over a 0.2m move
+      m_driveTestHeadingIntegralDeg = std::clamp(m_driveTestHeadingIntegralDeg, -5.0, 5.0);
+      const double headingIntegralRad = m_driveTestHeadingIntegralDeg / kDegPerRad;
+      m_driveTestCmdOmega = Clamp(
+          angleKp * (m_driveTestAngleError + headingIntegralRad),
+          -angularMax,
+          angularMax);
+#endif
+      m_driveTestCmdOmega = 0.0;
       atGoal = (std::abs(m_driveTestPositionError) <= posTol) &&
                (std::abs(m_driveTestAngleError) <= angleTolRad);
       break;
@@ -426,6 +440,7 @@ void Robot::UpdateDriveTest() {
       const double desiredTheta = WrapAngleRadians(m_driveTestStartTheta + m_driveTestTargetAngle);
       m_driveTestPositionError = 0.0;
       m_driveTestAngleError = WrapAngleRadians(desiredTheta - theta);
+      m_driveTestHeadingIntegralDeg = 0.0;
       m_driveTestCmdVx = 0.0;
       m_driveTestCmdOmega = Clamp(angleKp * m_driveTestAngleError, -angularMax, angularMax);
       atGoal = std::abs(m_driveTestAngleError) <= angleTolRad;
