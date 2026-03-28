@@ -27,9 +27,14 @@ constexpr uint8_t kCmdWriteNVM = 94;
 }  // namespace
 
 RoboClawDriver::RoboClawDriver(frc::SerialPort::Port port, int baud) {
-  m_serial = new frc::SerialPort(baud, port);
-  m_serial->SetTimeout(0.1_s);
-  m_serial->SetReadBufferSize(64);
+  try {
+    m_serial = new frc::SerialPort(baud, port);
+    m_serial->SetTimeout(0.1_s);
+    m_serial->SetReadBufferSize(64);
+  } catch (const std::exception& e) {
+    m_serial = nullptr;
+    std::fprintf(stderr, "[RoboClawDriver] SerialPort open failed: %s\n", e.what());
+  }
 }
 
 RoboClawDriver::~RoboClawDriver() {
@@ -85,6 +90,9 @@ uint16_t RoboClawDriver::UnpackUint16BE(const uint8_t* src) {
 }
 
 void RoboClawDriver::FlushRx() {
+  if (!m_serial) {
+    return;
+  }
   std::array<uint8_t, 64> discard{};
   while (m_serial->GetBytesReceived() > 0) {
     const int toRead = std::min<int>(m_serial->GetBytesReceived(), discard.size());
@@ -93,6 +101,9 @@ void RoboClawDriver::FlushRx() {
 }
 
 bool RoboClawDriver::SendPacket(uint8_t* buf, size_t payloadLen) {
+  if (!m_serial) {
+    return false;
+  }
   const uint16_t crc = CalcCRC16(buf, payloadLen);
   buf[payloadLen] = static_cast<uint8_t>((crc >> 8) & 0xFF);
   buf[payloadLen + 1] = static_cast<uint8_t>(crc & 0xFF);
@@ -102,6 +113,9 @@ bool RoboClawDriver::SendPacket(uint8_t* buf, size_t payloadLen) {
 }
 
 int RoboClawDriver::ReadBytes(uint8_t* dst, int n, int timeoutMs) {
+  if (!m_serial) {
+    return 0;
+  }
   int gotTotal = 0;
   auto deadline = frc::Timer::GetFPGATimestamp() + units::millisecond_t(timeoutMs);
   while (gotTotal < n && frc::Timer::GetFPGATimestamp() < deadline) {
@@ -160,6 +174,10 @@ auto RoboClawDriver::ReadVelocityPID(uint8_t address, uint8_t cmd)
     -> PIDReadResult {
   std::scoped_lock lock(m_mutex);
   PIDReadResult result;
+  if (!m_serial) {
+    result.error = "Serial port unavailable";
+    return result;
+  }
   FlushRx();
 
   const uint8_t query[2] = {address, cmd};
@@ -230,6 +248,9 @@ bool RoboClawDriver::WriteNVM(uint8_t address) {
 
 bool RoboClawDriver::SendSimpleWriteWithAck(const uint8_t* packet, size_t len,
                                             int ackTimeoutMs) {
+  if (!m_serial) {
+    return false;
+  }
   FlushRx();
   const int written = m_serial->Write(reinterpret_cast<const char*>(packet), static_cast<int>(len));
   if (written != static_cast<int>(len)) {
@@ -247,6 +268,9 @@ bool RoboClawDriver::SendSimpleWriteWithAck(const uint8_t* packet, size_t len,
 
 std::optional<RoboClawDriver::EncoderResult> RoboClawDriver::ReadEncoder(uint8_t address,
                                                                           uint8_t cmd) {
+  if (!m_serial) {
+    return std::nullopt;
+  }
   FlushRx();
   const uint8_t query[2] = {address, cmd};
   if (m_serial->Write(reinterpret_cast<const char*>(query), 2) != 2) {
@@ -336,6 +360,9 @@ bool RoboClawDriver::ResetEncoders(uint8_t address) {
 
 std::optional<std::string> RoboClawDriver::ReadFirmwareVersion(uint8_t address) {
   std::scoped_lock lock(m_mutex);
+  if (!m_serial) {
+    return std::nullopt;
+  }
   FlushRx();
 
   const uint8_t header[2] = {address, kCmdReadFirmware};
