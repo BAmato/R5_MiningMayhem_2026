@@ -32,7 +32,7 @@ static const std::array<roboclaw::VelocityPID, 3> kDefaultPIDs = {{
     {.Kp = 1.0, .Ki = 0.5, .Kd = 0.25, .qpps = 44000},
 }};
 
-Robot::Robot() : m_rcDriver(frc::SerialPort::kMXP, 38400), m_pidManager(&m_rcDriver, kDefaultPIDs) {
+Robot::Robot() {
   EnableLiveWindowInTest(true);
   HAL_Report(HALUsageReporting::kResourceType_Framework,
              HALUsageReporting::kFramework_RobotBuilder);
@@ -40,7 +40,9 @@ Robot::Robot() : m_rcDriver(frc::SerialPort::kMXP, 38400), m_pidManager(&m_rcDri
 
 void Robot::RobotInit() {
   try {
-    m_pidManager.Initialize();
+    m_pidManager = std::make_unique<roboclaw::RoboClawPIDManager>(
+        m_container->m_drivetrain.GetRoboClawDriver(), kDefaultPIDs);
+    m_pidManager->Initialize();
   } catch (const std::exception& e) {
     std::fprintf(stderr, "[Robot] PIDManager init failed: %s\n", e.what());
   }
@@ -68,7 +70,9 @@ void Robot::RobotInit() {
  */
 void Robot::RobotPeriodic() {
   static int dashboardCounter = 0;
-  m_pidManager.Periodic(IsEnabled());
+  if (m_pidManager) {
+    m_pidManager->Periodic(IsEnabled());
+  }
 
   ReadIMU();
 

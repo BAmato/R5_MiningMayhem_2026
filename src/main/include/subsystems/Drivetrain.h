@@ -58,6 +58,7 @@ class Drivetrain : public frc2::SubsystemBase {
   bool VerifyControllers();
   std::optional<std::string> GetFirmwareVersionVertical();
   std::optional<std::string> GetFirmwareVersionHorizontal();
+  RoboClawDriver* GetRoboClawDriver() { return &m_roboclaw; }
 
  private:
   static double Clamp(double value, double minValue, double maxValue);
